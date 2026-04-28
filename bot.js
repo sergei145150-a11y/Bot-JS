@@ -201,26 +201,47 @@ vk.updates.on('message_new', async (context) => {
 		// REPORT
 		if (st.type === 'report') {
 
-			let photos = [];
+    let photos = [];
 
-			if (context.attachments?.length) {
-				for (const att of context.attachments) {
-					if (att.type === 'photo') {
-						photos.push(att.toString());
-					}
-				}
-			}
+    try {
+        const msg = await vk.api.messages.getById({
+            message_ids: context.id
+        });
 
-			await sendAdmins(
-				`📑 Новый отчёт\n\n👤 id${id}\n📝 ${text || 'Без текста'}`,
-				photos
-			);
+        if (msg.items && msg.items.length) {
+            const atts = msg.items[0].attachments || [];
 
-			delete states[id];
-			await send(id, '✅ Отчёт отправлен.', menu(id));
-			return;
-		}
+            for (const att of atts) {
+                if (att.type === 'photo') {
+                    const p = att.photo;
 
+                    if (p.access_key) {
+                        photos.push(
+                            `photo${p.owner_id}_${p.id}_${p.access_key}`
+                        );
+                    } else {
+                        photos.push(
+                            `photo${p.owner_id}_${p.id}`
+                        );
+                    }
+                }
+            }
+        }
+
+    } catch (e) {
+        console.log(e);
+    }
+
+    await sendAdmins(
+        `📑 Новый отчёт\n\n👤 id${id}\n📝 ${text || 'Без текста'}`,
+        photos
+    );
+
+    delete states[id];
+
+    await send(id, '✅ Отчёт отправлен.', menu(id));
+    return;
+}
 		// SIMPLE CLAIMS
 		if (st.type === 'inactive') {
 			await sendAdmins(`🛩 Неактив\n\n👤 id${id}\n📝 ${text}`);
