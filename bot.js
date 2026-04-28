@@ -77,13 +77,17 @@ function run(sql, params = []) {
 }
 
 async function send(id, message, keyboard = null, attachment = []) {
-    await vk.api.messages.send({
+
+    const params = {
         peer_id: id,
         random_id: Date.now() + Math.floor(Math.random() * 9999),
-        message,
-        keyboard,
-        attachment
-    });
+        message
+    };
+
+    if (keyboard) params.keyboard = keyboard;
+    if (attachment && attachment.length) params.attachment = attachment;
+
+    await vk.api.messages.send(params);
 }
 
 async function sendAdmins(message, attachment = []) {
