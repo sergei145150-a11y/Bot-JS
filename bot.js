@@ -170,13 +170,74 @@ function claimsMenu() {
 }
 
 function adminMenu() {
-	return Keyboard.builder()
-		.textButton({ label: '➕ Добавить сотрудника', color: Keyboard.POSITIVE_COLOR })
-		.row()
-		.textButton({ label: '📋 Список состава', color: Keyboard.PRIMARY_COLOR })
-		.row()
-		.textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR });
+    return Keyboard.builder()
+        .textButton({
+            label: '👤 Модераторы',
+            color: Keyboard.PRIMARY_COLOR
+        })
+        .row()
+
+        .textButton({
+            label: '📊 Статистика',
+            color: Keyboard.POSITIVE_COLOR
+        })
+
+        .textButton({
+            label: '🔖 Повышения',
+            color: Keyboard.SECONDARY_COLOR
+        })
+        .row()
+
+        .textButton({
+            label: '📄 Состав',
+            color: Keyboard.PRIMARY_COLOR
+        })
+
+        .textButton({
+            label: '⚙ Настройки',
+            color: Keyboard.NEGATIVE_COLOR
+        })
+        .row()
+
+        .textButton({
+            label: '⬅ Назад',
+            color: Keyboard.SECONDARY_COLOR
+        })
+        .inline(false);
 }
+
+function moderatorsMenu() {
+    return Keyboard.builder()
+        .textButton({
+            label: '➕ Добавить модератора',
+            color: Keyboard.POSITIVE_COLOR
+        })
+        .row()
+
+        .textButton({
+            label: '✏ Изменить данные',
+            color: Keyboard.PRIMARY_COLOR
+        })
+
+        .textButton({
+            label: '🗑 Удалить',
+            color: Keyboard.NEGATIVE_COLOR
+        })
+        .row()
+
+        .textButton({
+            label: '🔎 Найти',
+            color: Keyboard.SECONDARY_COLOR
+        })
+        .row()
+
+        .textButton({
+            label: '⬅ Назад',
+            color: Keyboard.SECONDARY_COLOR
+        })
+        .inline(false);
+}
+
 
 // ======================================
 // START
@@ -398,30 +459,33 @@ vk.updates.on('message_new', async (context) => {
 	}
 
 	else if (low === '🛠 управление' && ADMINS.includes(id)) {
-		await send(id, '🛠 Панель управления:', adminMenu());
-	}
+    await send(id, '🛠 Панель управления:', adminMenu());
+}
 
-	else if (low === '➕ добавить сотрудника' && ADMINS.includes(id)) {
-		states[id] = { type: 'add_staff_link' };
-		await send(id, 'Введите ссылку VK / ID / @username');
-	}
+else if (low === '👤 модераторы' && ADMINS.includes(id)) {
+    await send(id, '👤 Раздел модераторов:', moderatorsMenu());
+}
 
-	else if (low === '📋 список состава' && ADMINS.includes(id)) {
+else if (low === '📊 статистика' && ADMINS.includes(id)) {
+    await send(id, '📊 Раздел статистики.', adminMenu());
+}
 
-		const rows = await all(`SELECT * FROM users WHERE rp_nick != ''`);
+else if (low === '🔖 повышения' && ADMINS.includes(id)) {
+    await send(id, '🔖 Раздел повышений.', adminMenu());
+}
 
-		let msg = '📋 Состав:\n\n';
+else if (low === '📄 состав' && ADMINS.includes(id)) {
+    await send(id, '📄 Список состава.', adminMenu());
+}
 
-		for (const u of rows) {
-			msg += `${u.rp_nick} — ${u.post}\n`;
-		}
+else if (low === '⚙ настройки' && ADMINS.includes(id)) {
+    await send(id, '⚙ Раздел настроек.', adminMenu());
+}
 
-		await send(id, msg, adminMenu());
-	}
-
-	else if (low === '⬅ назад') {
-		await send(id, '⬅ Главное меню.', menu(id));
-	}
+else if (low === '➕ добавить модератора' && ADMINS.includes(id)) {
+    states[id] = { type: 'add_staff_link' };
+    await send(id, 'Введите VK ссылку / ID / @username');
+}
 
 });
 
