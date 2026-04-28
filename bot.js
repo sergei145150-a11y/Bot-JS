@@ -55,13 +55,29 @@ vk.updates.on('message_new', async (context) => {
 
         let photos = [];
 
-        if (context.attachments.length) {
-            for (const att of context.attachments) {
-                if (att.type === 'photo') {
-                    photos.push(att.toString());
+try {
+    const msg = await vk.api.messages.getById({
+        message_ids: context.id
+    });
+
+    if (msg.items.length) {
+        const attachments = msg.items[0].attachments || [];
+
+        for (const att of attachments) {
+            if (att.type === 'photo') {
+                const p = att.photo;
+
+                if (p.access_key) {
+                    photos.push(`photo${p.owner_id}_${p.id}_${p.access_key}`);
+                } else {
+                    photos.push(`photo${p.owner_id}_${p.id}`);
                 }
             }
         }
+    }
+} catch (e) {
+    console.log(e);
+}
 
         const attachment = photos.length ? photos.join(',') : null;
 
