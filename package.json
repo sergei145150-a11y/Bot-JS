@@ -1,0 +1,12 @@
+{
+  "name": "vk-bot",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "vk-io": "^4.9.2",
+    "sqlite3": "^5.1.7"
+  }
+}
