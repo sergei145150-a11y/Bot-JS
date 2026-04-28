@@ -13,9 +13,29 @@ const db = new sqlite3.Database('./base.db');
 db.run(`
 CREATE TABLE IF NOT EXISTS users (
 id INTEGER PRIMARY KEY,
+
 warns INTEGER DEFAULT 0,
 vigs INTEGER DEFAULT 0,
-coins INTEGER DEFAULT 0
+coins INTEGER DEFAULT 0,
+
+rp_nick TEXT DEFAULT 'Не указано',
+post TEXT DEFAULT 'Стажёр',
+
+name TEXT DEFAULT 'Не указано',
+age TEXT DEFAULT 'Не указано',
+birthday TEXT DEFAULT 'Не указано',
+timezone TEXT DEFAULT 'Не указано',
+pc TEXT DEFAULT 'Нет',
+
+appointed TEXT DEFAULT 'Не указано',
+last_up TEXT DEFAULT 'Не указано',
+
+norm_days INTEGER DEFAULT 0,
+inactive_count INTEGER DEFAULT 0,
+
+discord TEXT DEFAULT 'Не указано',
+forum TEXT DEFAULT 'Не указано',
+telegram TEXT DEFAULT 'Не указано'
 )
 `);
 
@@ -47,7 +67,47 @@ vk.updates.on('message_new', async (context) => {
 
     const id = context.senderId;
     const text = (context.text || '').trim().toLowerCase();
+    const raw = (context.text || '').trim();
+const args = raw.split(' ');
 
+if (ADMINS.includes(id) && raw.startsWith('!')) {
+
+    const cmd = args[0].toLowerCase();
+    const uid = Number(args[1]);
+    const value = args.slice(2).join(' ');
+
+    if (!uid) {
+        await send(id, '❌ Укажи ID.');
+        return;
+    }
+
+    reg(uid);
+
+    function update(field, val) {
+        db.run(`UPDATE users SET ${field}=? WHERE id=?`, [val, uid]);
+    }
+
+    if (cmd === '!setnick') update('rp_nick', value);
+    else if (cmd === '!setpost') update('post', value);
+    else if (cmd === '!setcoins') update('coins', Number(value));
+    else if (cmd === '!setwarn') update('warns', Number(value));
+    else if (cmd === '!setvig') update('vigs', Number(value));
+    else if (cmd === '!setname') update('name', value);
+    else if (cmd === '!setage') update('age', value);
+    else if (cmd === '!settg') update('telegram', value);
+    else if (cmd === '!setds') update('discord', value);
+    else if (cmd === '!setforum') update('forum', value);
+    else if (cmd === '!setappoint') update('appointed', value);
+    else if (cmd === '!setup') update('last_up', value);
+    else {
+        await send(id, '❌ Неизвестная команда.');
+        return;
+    }
+
+    await send(id, `✅ Данные пользователя ${uid} обновлены.`);
+    return;
+}
+    
     reg(id);
 
     if (states[id]) {
@@ -124,16 +184,54 @@ try {
     }
 
     else if (text === '🪪 статистика') {
-        getUser(id, async (err, row) => {
-            await send(id,
-`🪪 Ваша статистика
+    getUser(id, async (err, row) => {
 
-🆔 ID: ${id}
-⚠ Предупреждения: ${row.warns}
-⛔ Выговоры: ${row.vigs}
-💰 Coins: ${row.coins}`);
-        });
-    }
+        const now = new Date();
+
+        let daysPost = 0;
+        let daysRank = 0;
+
+        if (row.appointed !== 'Не указано') {
+            const d = new Date(row.appointed);
+            daysPost = Math.floor((now - d) / 86400000);
+        }
+
+        if (row.last_up !== 'Не указано') {
+            const d2 = new Date(row.last_up);
+            daysRank = Math.floor((now - d2) / 86400000);
+        }
+
+        await send(id,
+`🔻RP-Nickname: ${row.rp_nick}
+🔻Должность: ${row.post}
+🪙Coins: ${row.coins}
+
+📋 Личная информация
+
+▫️Имя: ${row.name}
+▫️Возраст: ${row.age}
+▫️Дата рождения: ${row.birthday}
+▫️Часовой пояс: ${row.timezone}
+▫️ПК: ${row.pc}
+
+🪪 Статистика модератора
+
+⛔Предупреждения: ${row.warns}
+⛔Выговоры: ${row.vigs}
+
+▫️Поставлен: ${row.appointed}
+▫️Последнее повышение: ${row.last_up}
+▫️Дней на посту: ${daysPost}
+▫️Дней на должности: ${daysRank}
+
+✅Дней выполненной нормы: ${row.norm_days}
+❎Количество неактивов: ${row.inactive_count}
+
+⚠Discord: ${row.discord}
+⚠Forum: ${row.forum}
+⚠Telegram: ${row.telegram}`);
+    });
+}
 
     else if (text === '🗂 заявления') {
         await send(id,
