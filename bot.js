@@ -1000,7 +1000,10 @@ else if (low === '📋 список админов' && ADMINS.includes(id)) {
 
     await send(id, msg, adminMenu());
 }
-};
+
+else if (low === '➕ добавить админа' && ADMINS.includes(id)) {
+    ...
+}
 
 // =====================================
 // START BOT
