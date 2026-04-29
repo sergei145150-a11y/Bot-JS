@@ -519,39 +519,488 @@ vk.updates.on('message_new', async (context) => {
         await send(id, '🛠 Панель управления:', adminMenu());
     }
 
-    else if (low === '👤 модераторы' && ADMINS.includes(id)) {
-        states[id] = { type: 'none' };
-        await send(id, 'Введите команду:\n➕ Добавить модератора');
+    // =======================================
+// V6 ШАГ 2 — вставить в COMMANDS блок
+// ниже else if (low === '🛠 управление')
+// =======================================
+
+// ==============================
+// 👤 МОДЕРАТОРЫ
+// ==============================
+else if (low === '👤 модераторы' && ADMINS.includes(id)) {
+
+    await send(id, '👤 Управление модераторами:',
+        Keyboard.builder()
+
+        .textButton({
+            label: '➕ Добавить модератора',
+            color: Keyboard.POSITIVE_COLOR
+        })
+
+        .row()
+
+        .textButton({
+            label: '🗑 Удалить модератора',
+            color: Keyboard.NEGATIVE_COLOR
+        })
+
+        .textButton({
+            label: '✏ Изменить данные',
+            color: Keyboard.PRIMARY_COLOR
+        })
+
+        .row()
+
+        .textButton({
+            label: '📄 Список модераторов',
+            color: Keyboard.SECONDARY_COLOR
+        })
+
+        .row()
+
+        .textButton({
+            label: '⬅ Назад',
+            color: Keyboard.SECONDARY_COLOR
+        })
+
+        .inline(false)
+    );
+}
+
+// ==============================
+// 📊 СТАТИСТИКА
+// ==============================
+else if (low === '📊 статистика' && ADMINS.includes(id)) {
+
+    await send(id, '📊 Управление статистикой:',
+        Keyboard.builder()
+
+        .textButton({
+            label: '➕ Выдать Coins',
+            color: Keyboard.POSITIVE_COLOR
+        })
+
+        .textButton({
+            label: '➖ Снять Coins',
+            color: Keyboard.NEGATIVE_COLOR
+        })
+
+        .row()
+
+        .textButton({
+            label: '⛔ Выдать выговор',
+            color: Keyboard.NEGATIVE_COLOR
+        })
+
+        .textButton({
+            label: '✅ Снять выговор',
+            color: Keyboard.POSITIVE_COLOR
+        })
+
+        .row()
+
+        .textButton({
+            label: '📈 +Норма день',
+            color: Keyboard.PRIMARY_COLOR
+        })
+
+        .row()
+
+        .textButton({
+            label: '⬅ Назад',
+            color: Keyboard.SECONDARY_COLOR
+        })
+
+        .inline(false)
+    );
+}
+
+// ==========================================
+// V6 STEP 3
+// ВСТАВИТЬ В БЛОК if (states[id]) {
+// СРАЗУ В НАЧАЛО
+// ==========================================
+
+// ============================
+// УДАЛИТЬ МОДЕРАТОРА
+// ============================
+if (st.type === 'remove_mod') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
     }
 
-    else if (low === '➕ добавить модератора' && ADMINS.includes(id)) {
-        states[id] = { type: 'add_link' };
-        await send(id, 'Введите ссылку / ID / @username');
+    await run(`
+        UPDATE users SET
+        rp_nick='',
+        post='',
+        appointed='',
+        last_up=''
+        WHERE id=?
+    `, [uid]);
+
+    delete states[id];
+
+    await send(id, '✅ Модератор удалён.', adminMenu());
+    return;
+}
+
+// ============================
+// ИЗМЕНИТЬ ДОЛЖНОСТЬ
+// ============================
+if (st.type === 'edit_mod_1') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
     }
 
-    else if (low === '📄 состав' && ADMINS.includes(id)) {
+    states[id] = {
+        type: 'edit_mod_2',
+        uid
+    };
 
-        const rows = await all(`SELECT * FROM users WHERE rp_nick != ''`);
+    let msg = 'Выберите новую должность:\n\n';
 
-        if (!rows.length) {
-            await send(id, 'Состав пуст.', adminMenu());
-            return;
-        }
+    POSTS.forEach((p, i) => {
+        msg += `${i + 1}. ${p}\n`;
+    });
 
-        let msg = '📄 Состав:\n\n';
+    await send(id, msg);
+    return;
+}
 
-        rows.forEach((u, i) => {
-            msg += `${i + 1}. ${u.rp_nick} — ${u.post}\n`;
-        });
+if (st.type === 'edit_mod_2') {
 
-        await send(id, msg, adminMenu());
+    const num = Number(text);
+
+    if (!POSTS[num - 1]) {
+        await send(id, '❌ Неверный номер');
+        return;
     }
 
-    else if (low === '⬅ назад') {
-        await send(id, '⬅ Главное меню.', menu(id));
+    const today = new Date();
+    const d = `${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
+
+    await run(`
+        UPDATE users SET
+        post=?,
+        last_up=?
+        WHERE id=?
+    `, [
+        POSTS[num - 1],
+        d,
+        st.uid
+    ]);
+
+    delete states[id];
+
+    await send(id, '✅ Должность обновлена.', adminMenu());
+    return;
+}
+
+// ============================
+// ВЫДАТЬ COINS
+// ============================
+if (st.type === 'coins_add_1') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
     }
 
-});
+    states[id] = {
+        type: 'coins_add_2',
+        uid
+    };
+
+    await send(id, 'Введите количество Coins:');
+    return;
+}
+
+if (st.type === 'coins_add_2') {
+
+    const val = Number(text);
+
+    await run(`
+        UPDATE users
+        SET coins = coins + ?
+        WHERE id=?
+    `, [val, st.uid]);
+
+    delete states[id];
+
+    await send(id, '✅ Coins начислены.', adminMenu());
+    return;
+}
+
+// ============================
+// СНЯТЬ COINS
+// ============================
+if (st.type === 'coins_remove_1') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
+    }
+
+    states[id] = {
+        type: 'coins_remove_2',
+        uid
+    };
+
+    await send(id, 'Введите количество Coins:');
+    return;
+}
+
+if (st.type === 'coins_remove_2') {
+
+    const val = Number(text);
+
+    await run(`
+        UPDATE users
+        SET coins = CASE
+            WHEN coins - ? < 0 THEN 0
+            ELSE coins - ?
+        END
+        WHERE id=?
+    `, [val, val, st.uid]);
+
+    delete states[id];
+
+    await send(id, '✅ Coins сняты.', adminMenu());
+    return;
+}
+
+// ============================
+// ВЫГОВОР +
+// ============================
+if (st.type === 'vig_add') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
+    }
+
+    await run(`
+        UPDATE users
+        SET vigs = vigs + 1
+        WHERE id=?
+    `, [uid]);
+
+    delete states[id];
+
+    await send(id, '✅ Выговор выдан.', adminMenu());
+    return;
+}
+
+// ============================
+// ВЫГОВОР -
+// ============================
+if (st.type === 'vig_remove') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
+    }
+
+    await run(`
+        UPDATE users
+        SET vigs = CASE
+            WHEN vigs - 1 < 0 THEN 0
+            ELSE vigs - 1
+        END
+        WHERE id=?
+    `, [uid]);
+
+    delete states[id];
+
+    await send(id, '✅ Выговор снят.', adminMenu());
+    return;
+}
+
+// ============================
+// + НОРМА
+// ============================
+if (st.type === 'norm_add') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
+    }
+
+    await run(`
+        UPDATE users
+        SET norm_days = norm_days + 1
+        WHERE id=?
+    `, [uid]);
+
+    delete states[id];
+
+    await send(id, '✅ День нормы добавлен.', adminMenu());
+    return;
+}
+
+// ============================
+// АВТО ПОВЫШЕНИЕ
+// ============================
+if (st.type === 'raise_mod') {
+
+    const uid = await resolveUser(text);
+
+    if (!uid) {
+        await send(id, '❌ Пользователь не найден');
+        return;
+    }
+
+    const row = await get(`
+        SELECT * FROM users WHERE id=?
+    `, [uid]);
+
+    const index = POSTS.indexOf(row.post);
+
+    if (index === -1 || index >= POSTS.length - 1) {
+        await send(id, '❌ Повысить нельзя.');
+        delete states[id];
+        return;
+    }
+
+    const today = new Date();
+    const d = `${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
+
+    await run(`
+        UPDATE users
+        SET post=?,
+        last_up=?
+        WHERE id=?
+    `, [
+        POSTS[index + 1],
+        d,
+        uid
+    ]);
+
+    delete states[id];
+
+    await send(id, '✅ Модератор повышен.', adminMenu());
+    return;
+}
+
+// ==========================================
+// V6 STEP 4
+// ВСТАВИТЬ В COMMANDS БЛОК
+// (ниже меню админки)
+// ==========================================
+
+// ============================
+// УДАЛИТЬ МОДЕРАТОРА
+// ============================
+else if (low === '🗑 удалить модератора' && ADMINS.includes(id)) {
+    states[id] = { type: 'remove_mod' };
+    await send(id, 'Введите ссылку / ID / @username модератора:');
+}
+
+// ============================
+// ИЗМЕНИТЬ ДАННЫЕ
+// ============================
+else if (low === '✏ изменить данные' && ADMINS.includes(id)) {
+    states[id] = { type: 'edit_mod_1' };
+    await send(id, 'Введите ссылку / ID / @username модератора:');
+}
+
+// ============================
+// ВЫДАТЬ COINS
+// ============================
+else if (low === '➕ выдать coins' && ADMINS.includes(id)) {
+    states[id] = { type: 'coins_add_1' };
+    await send(id, 'Введите ссылку / ID / @username:');
+}
+
+// ============================
+// СНЯТЬ COINS
+// ============================
+else if (low === '➖ снять coins' && ADMINS.includes(id)) {
+    states[id] = { type: 'coins_remove_1' };
+    await send(id, 'Введите ссылку / ID / @username:');
+}
+
+// ============================
+// ВЫДАТЬ ВЫГОВОР
+// ============================
+else if (low === '⛔ выдать выговор' && ADMINS.includes(id)) {
+    states[id] = { type: 'vig_add' };
+    await send(id, 'Введите ссылку / ID / @username:');
+}
+
+// ============================
+// СНЯТЬ ВЫГОВОР
+// ============================
+else if (low === '✅ снять выговор' && ADMINS.includes(id)) {
+    states[id] = { type: 'vig_remove' };
+    await send(id, 'Введите ссылку / ID / @username:');
+}
+
+// ============================
+// + НОРМА ДЕНЬ
+// ============================
+else if (low === '📈 +норма день' && ADMINS.includes(id)) {
+    states[id] = { type: 'norm_add' };
+    await send(id, 'Введите ссылку / ID / @username:');
+}
+
+// ============================
+// СПИСОК МОДЕРАТОРОВ
+// ============================
+else if (low === '📄 список модераторов' && ADMINS.includes(id)) {
+
+    const rows = await all(`
+        SELECT * FROM users
+        WHERE rp_nick != ''
+        ORDER BY id ASC
+    `);
+
+    if (!rows.length) {
+        await send(id, 'Список пуст.');
+        return;
+    }
+
+    let msg = '📄 Список модераторов:\n\n';
+
+    rows.forEach((u, i) => {
+        msg += `${i + 1}. ${u.rp_nick} — ${u.post}\n`;
+    });
+
+    await send(id, msg);
+}
+    
+// ==============================
+// СПИСОК АДМИНОВ
+// ==============================
+else if (low === '📋 список админов' && ADMINS.includes(id)) {
+
+    let msg = '📋 Администраторы:\n\n';
+
+    ADMINS.forEach((a, i) => {
+        msg += `${i + 1}. id${a}\n`;
+    });
+
+    await send(id, msg, adminMenu());
+}
+};
 
 // =====================================
 // START BOT
