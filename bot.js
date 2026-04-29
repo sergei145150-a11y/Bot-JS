@@ -1,26 +1,34 @@
-// FULL V2 FINAL FIXED
-// Node.js VK BOT
-// npm i vk-io sqlite3
+// FULL V4 bot.js
+// npm install vk-io sqlite3
 
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
 
-// ======================================
+// =====================================
 // CONFIG
-// ======================================
+// =====================================
 const TOKEN = 'vk1.a.FJKFjHTWfHQM-DgOtBH3y35k_8L13uZiaA6kvsUXxJcRG-fvChOWJLzwVcUrphGUWtHsf2i1NxfYagKRVMNxB1brG8c3YX0y2L-VwKzfY5hOnWO7Eex5ysAdSmluSEYWy-1XQgCMCcpCuQxDaRc5c950wWgJTU0_FT-ufn8nsxw6U_ue4VOY7bxbemrcsEsdFYw7PnSBC5vOP8lYT4NqCA';
-const ADMINS = [674691524, 642009529, 547053039];
+let ADMINS = [674691524, 642009529, 547053039];
 
-// ======================================
+const POSTS = [
+    'Младший модератор',
+    'Модератор',
+    'Старший модератор',
+    'Куратор модерации',
+    'Заместитель главного модератора',
+    'Главный модератор'
+];
+
+// =====================================
 // VK
-// ======================================
+// =====================================
 const vk = new VK({
-	token: TOKEN
+    token: TOKEN
 });
 
-// ======================================
+// =====================================
 // DB
-// ======================================
+// =====================================
 const db = new sqlite3.Database('./base.db');
 
 db.run(`
@@ -31,482 +39,387 @@ post TEXT DEFAULT '',
 coins INTEGER DEFAULT 0,
 warns INTEGER DEFAULT 0,
 vigs INTEGER DEFAULT 0,
-name TEXT DEFAULT '',
-age TEXT DEFAULT '',
-birthday TEXT DEFAULT '',
-timezone TEXT DEFAULT '',
-pc TEXT DEFAULT '',
-appointed TEXT DEFAULT '',
-last_up TEXT DEFAULT '',
 norm_days INTEGER DEFAULT 0,
 inactive_count INTEGER DEFAULT 0,
-discord TEXT DEFAULT '',
-forum TEXT DEFAULT '',
-telegram TEXT DEFAULT ''
+appointed TEXT DEFAULT '',
+last_up TEXT DEFAULT ''
 )
 `);
 
-// ======================================
+// =====================================
 // MEMORY
-// ======================================
+// =====================================
 const states = {};
 
-// ======================================
+// =====================================
 // HELPERS
-// ======================================
+// =====================================
 function reg(id) {
-	db.run(`INSERT OR IGNORE INTO users(id) VALUES(?)`, [id]);
+    db.run(`INSERT OR IGNORE INTO users(id) VALUES(?)`, [id]);
 }
 
-function query(sql, params = []) {
-	return new Promise(resolve => {
-		db.get(sql, params, (err, row) => resolve(row));
-	});
+function get(sql, params = []) {
+    return new Promise(resolve => {
+        db.get(sql, params, (e, row) => resolve(row));
+    });
 }
 
 function all(sql, params = []) {
-	return new Promise(resolve => {
-		db.all(sql, params, (err, rows) => resolve(rows));
-	});
+    return new Promise(resolve => {
+        db.all(sql, params, (e, rows) => resolve(rows));
+    });
 }
 
 function run(sql, params = []) {
-	return new Promise(resolve => {
-		db.run(sql, params, resolve);
-	});
+    return new Promise(resolve => {
+        db.run(sql, params, resolve);
+    });
 }
 
-async function send(id, message, keyboard = false, attachment = []) {
-	const params = {
-		peer_id: id,
-		random_id: Date.now(),
-		message
-	};
+async function send(id, message, keyboard = null, attachment = []) {
+    const params = {
+        peer_id: id,
+        random_id: Date.now(),
+        message
+    };
 
-	if (keyboard) params.keyboard = keyboard;
-	if (attachment.length) params.attachment = attachment.join(',');
+    if (keyboard) params.keyboard = keyboard;
+    if (attachment.length) params.attachment = attachment;
 
-	await vk.api.messages.send(params);
+    await vk.api.messages.send(params);
 }
 
-async function sendAdmins(message, attachment = []) {
-	for (const admin of ADMINS) {
-		await send(admin, message, false, attachment);
-	}
+async function sendAdmins(msg, attachment = []) {
+    for (const admin of ADMINS) {
+        await send(admin, msg, null, attachment);
+    }
 }
 
 async function resolveUser(text) {
-	text = text
-		.replace('https://vk.com/', '')
-		.replace('http://vk.com/', '')
-		.replace('vk.com/', '')
-		.replace('@', '')
-		.trim();
+    text = text
+        .replace('https://vk.com/', '')
+        .replace('vk.com/', '')
+        .replace('@', '')
+        .trim();
 
-	if (/^\d+$/.test(text)) return Number(text);
+    if (/^\d+$/.test(text)) return Number(text);
 
-	try {
-		const users = await vk.api.users.get({
-			user_ids: text
-		});
+    try {
+        const user = await vk.api.users.get({
+            user_ids: text
+        });
 
-		return users[0].id;
-	} catch {
-		return null;
-	}
+        return user[0].id;
+    } catch {
+        return null;
+    }
 }
 
-// ======================================
+// =====================================
 // KEYBOARDS
-// ======================================
+// =====================================
 function menu(id) {
-	const kb = Keyboard.builder();
+    const kb = Keyboard.builder();
 
-	kb.textButton({
-		label: '🪪 Статистика',
-		color: Keyboard.PRIMARY_COLOR
-	});
+    kb.textButton({
+        label: '🪪 Статистика',
+        color: Keyboard.PRIMARY_COLOR
+    });
 
-	kb.textButton({
-		label: '🗂 Заявления',
-		color: Keyboard.POSITIVE_COLOR
-	});
+    kb.textButton({
+        label: '🗂 Заявления',
+        color: Keyboard.POSITIVE_COLOR
+    });
 
-	kb.row();
+    kb.row();
 
-	kb.textButton({
-		label: '⚖ Инструктаж',
-		color: Keyboard.SECONDARY_COLOR
-	});
+    kb.textButton({
+        label: '⚖ Инструктаж',
+        color: Keyboard.SECONDARY_COLOR
+    });
 
-	kb.textButton({
-		label: '🆘 SOS',
-		color: Keyboard.NEGATIVE_COLOR
-	});
+    kb.textButton({
+        label: '🆘 SOS',
+        color: Keyboard.NEGATIVE_COLOR
+    });
 
-	if (ADMINS.includes(id)) {
-		kb.row();
+    if (ADMINS.includes(id)) {
+        kb.row();
 
-		kb.textButton({
-			label: '🛠 Управление',
-			color: Keyboard.NEGATIVE_COLOR
-		});
-	}
+        kb.textButton({
+            label: '🛠 Управление',
+            color: Keyboard.NEGATIVE_COLOR
+        });
+    }
 
-	return kb;
+    return kb.inline(false);
 }
 
 function claimsMenu() {
-	return Keyboard.builder()
-		.textButton({ label: '📑 Отчёт', color: Keyboard.PRIMARY_COLOR })
-		.textButton({ label: '🛩 Неактив', color: Keyboard.SECONDARY_COLOR })
-		.row()
-		.textButton({ label: '🔖 Повышение', color: Keyboard.POSITIVE_COLOR })
-		.textButton({ label: '🗂 Снятие выговора', color: Keyboard.PRIMARY_COLOR })
-		.row()
-		.textButton({ label: '🔕 Пропуск собрания', color: Keyboard.NEGATIVE_COLOR })
-		.row()
-		.textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR });
+    return Keyboard.builder()
+        .textButton({ label: '📑 Отчёт', color: Keyboard.PRIMARY_COLOR })
+        .textButton({ label: '🛩 Неактив', color: Keyboard.SECONDARY_COLOR })
+        .row()
+        .textButton({ label: '🔖 Повышение', color: Keyboard.POSITIVE_COLOR })
+        .textButton({ label: '🗂 Снятие выговора', color: Keyboard.PRIMARY_COLOR })
+        .row()
+        .textButton({ label: '🔕 Пропуск собрания', color: Keyboard.NEGATIVE_COLOR })
+        .row()
+        .textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR })
+        .inline(false);
 }
 
 function adminMenu() {
     return Keyboard.builder()
-        .textButton({
-            label: '👤 Модераторы',
-            color: Keyboard.PRIMARY_COLOR
-        })
+        .textButton({ label: '👤 Модераторы', color: Keyboard.PRIMARY_COLOR })
         .row()
-
-        .textButton({
-            label: '📊 Статистика',
-            color: Keyboard.POSITIVE_COLOR
-        })
-
-        .textButton({
-            label: '🔖 Повышения',
-            color: Keyboard.SECONDARY_COLOR
-        })
+        .textButton({ label: '📊 Статистика', color: Keyboard.POSITIVE_COLOR })
+        .textButton({ label: '🔖 Повышения', color: Keyboard.SECONDARY_COLOR })
         .row()
-
-        .textButton({
-            label: '📄 Состав',
-            color: Keyboard.PRIMARY_COLOR
-        })
-
-        .textButton({
-            label: '⚙ Настройки',
-            color: Keyboard.NEGATIVE_COLOR
-        })
+        .textButton({ label: '📄 Состав', color: Keyboard.PRIMARY_COLOR })
+        .textButton({ label: '⚙ Настройки', color: Keyboard.NEGATIVE_COLOR })
         .row()
-
-        .textButton({
-            label: '⬅ Назад',
-            color: Keyboard.SECONDARY_COLOR
-        })
+        .textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR })
         .inline(false);
 }
 
 function moderatorsMenu() {
     return Keyboard.builder()
-        .textButton({
-            label: '➕ Добавить модератора',
-            color: Keyboard.POSITIVE_COLOR
-        })
+        .textButton({ label: '➕ Добавить модератора', color: Keyboard.POSITIVE_COLOR })
         .row()
-
-        .textButton({
-            label: '✏ Изменить данные',
-            color: Keyboard.PRIMARY_COLOR
-        })
-
-        .textButton({
-            label: '🗑 Удалить',
-            color: Keyboard.NEGATIVE_COLOR
-        })
+        .textButton({ label: '🔎 Найти модератора', color: Keyboard.PRIMARY_COLOR })
         .row()
-
-        .textButton({
-            label: '🔎 Найти',
-            color: Keyboard.SECONDARY_COLOR
-        })
+        .textButton({ label: '🗑 Удалить модератора', color: Keyboard.NEGATIVE_COLOR })
         .row()
-
-        .textButton({
-            label: '⬅ Назад',
-            color: Keyboard.SECONDARY_COLOR
-        })
+        .textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR })
         .inline(false);
 }
 
-
-// ======================================
+// =====================================
 // START
-// ======================================
+// =====================================
 vk.updates.on('message_new', async (context) => {
 
-	if (!context.isUser) return;
+    if (!context.isUser) return;
 
-	const id = context.senderId;
-	const text = (context.text || '').trim();
-	const low = text.toLowerCase();
+    const id = context.senderId;
+    const text = (context.text || '').trim();
+    const low = text.toLowerCase();
 
-	reg(id);
+    reg(id);
 
-	// ======================================
-	// STATES
-	// ======================================
-	if (states[id]) {
+    // =====================================
+    // STATES
+    // =====================================
+    if (states[id]) {
 
-		const st = states[id];
+        const st = states[id];
 
-		// REPORT
-		if (st.type === 'report') {
+        // REPORT
+        if (st.type === 'report') {
 
-    let photos = [];
+            const photos = [];
 
-    try {
-        const msg = await vk.api.messages.getById({
-            message_ids: context.id
-        });
-
-        if (msg.items && msg.items.length) {
-            const atts = msg.items[0].attachments || [];
-
-            for (const att of atts) {
-                if (att.type === 'photo') {
-                    const p = att.photo;
-
-                    if (p.access_key) {
-                        photos.push(
-                            `photo${p.owner_id}_${p.id}_${p.access_key}`
-                        );
-                    } else {
-                        photos.push(
-                            `photo${p.owner_id}_${p.id}`
-                        );
-                    }
+            for (const a of context.attachments) {
+                if (a.type === 'photo') {
+                    photos.push(a.toString());
                 }
             }
+
+            await sendAdmins(
+                `📑 Новый отчёт\n\n👤 id${id}\n📝 ${text || 'Без текста'}`,
+                photos
+            );
+
+            delete states[id];
+            await send(id, '✅ Отчёт отправлен.', menu(id));
+            return;
         }
 
-    } catch (e) {
-        console.log(e);
+        // ADD MODERATOR
+        if (st.type === 'add_link') {
+
+            const uid = await resolveUser(text);
+
+            if (!uid) {
+                await send(id, '❌ Пользователь не найден');
+                return;
+            }
+
+            reg(uid);
+
+            states[id] = {
+                type: 'add_nick',
+                uid
+            };
+
+            await send(id, 'Введите RP Nick:');
+            return;
+        }
+
+        if (st.type === 'add_nick') {
+
+            states[id] = {
+                type: 'add_post',
+                uid: st.uid,
+                nick: text
+            };
+
+            let msg = 'Выберите должность:\n\n';
+
+            POSTS.forEach((p, i) => {
+                msg += `${i + 1}. ${p}\n`;
+            });
+
+            await send(id, msg);
+            return;
+        }
+
+        if (st.type === 'add_post') {
+
+            const num = Number(text);
+
+            if (!POSTS[num - 1]) {
+                await send(id, '❌ Введите номер должности');
+                return;
+            }
+
+            await run(
+                `UPDATE users SET rp_nick=?, post=? WHERE id=?`,
+                [st.nick, POSTS[num - 1], st.uid]
+            );
+
+            delete states[id];
+
+            await send(id, '✅ Модератор добавлен.', moderatorsMenu());
+            return;
+        }
+
+        // DELETE
+        if (st.type === 'delete_mod') {
+
+            const uid = await resolveUser(text);
+
+            await run(`DELETE FROM users WHERE id=?`, [uid]);
+
+            delete states[id];
+
+            await send(id, '🗑 Модератор удалён.', moderatorsMenu());
+            return;
+        }
+
+        // FIND
+        if (st.type === 'find_mod') {
+
+            const uid = await resolveUser(text);
+            const row = await get(`SELECT * FROM users WHERE id=?`, [uid]);
+
+            if (!row) {
+                await send(id, '❌ Не найден.');
+                return;
+            }
+
+            await send(id,
+`👤 ${row.rp_nick}
+🆔 ${uid}
+📌 ${row.post}
+🪙 Coins: ${row.coins}
+⚠ Warns: ${row.warns}
+⛔ Vigs: ${row.vigs}`, moderatorsMenu());
+
+            delete states[id];
+            return;
+        }
     }
 
-    await sendAdmins(
-        `📑 Новый отчёт\n\n👤 id${id}\n📝 ${text || 'Без текста'}`,
-        photos
-    );
+    // =====================================
+    // COMMANDS
+    // =====================================
 
-    delete states[id];
+    if (low === '/start') {
+        await send(id, '✅ Панель активирована.', menu(id));
+    }
 
-    await send(id, '✅ Отчёт отправлен.', menu(id));
-    return;
-}
-		// SIMPLE CLAIMS
-		if (st.type === 'inactive') {
-			await sendAdmins(`🛩 Неактив\n\n👤 id${id}\n📝 ${text}`);
-			delete states[id];
-			await send(id, '✅ Заявка отправлена.', menu(id));
-			return;
-		}
+    else if (low === '🪪 статистика') {
 
-		if (st.type === 'up') {
-			await sendAdmins(`🔖 Повышение\n\n👤 id${id}\n📝 ${text}`);
-			delete states[id];
-			await send(id, '✅ Заявка отправлена.', menu(id));
-			return;
-		}
+        const row = await get(`SELECT * FROM users WHERE id=?`, [id]);
 
-		if (st.type === 'vigoff') {
-			await sendAdmins(`🗂 Снятие выговора\n\n👤 id${id}\n📝 ${text}`);
-			delete states[id];
-			await send(id, '✅ Заявка отправлена.', menu(id));
-			return;
-		}
-
-		if (st.type === 'skip') {
-			await sendAdmins(`🔕 Пропуск собрания\n\n👤 id${id}\n📝 ${text}`);
-			delete states[id];
-			await send(id, '✅ Заявка отправлена.', menu(id));
-			return;
-		}
-
-		// ADD STAFF
-		if (st.type === 'add_staff_link') {
-
-			const uid = await resolveUser(text);
-
-			if (!uid) {
-				await send(id, '❌ Пользователь не найден.');
-				return;
-			}
-
-			reg(uid);
-
-			states[id] = {
-				type: 'add_staff_nick',
-				uid
-			};
-
-			await send(id, 'Введите RP Nick:');
-			return;
-		}
-
-		if (st.type === 'add_staff_nick') {
-
-			states[id] = {
-				type: 'add_staff_post',
-				uid: st.uid,
-				nick: text
-			};
-
-			await send(id, 'Введите должность:');
-			return;
-		}
-
-		if (st.type === 'add_staff_post') {
-
-			await run(
-				`UPDATE users SET rp_nick=?, post=? WHERE id=?`,
-				[st.nick, text, st.uid]
-			);
-
-			delete states[id];
-
-			await send(id, '✅ Сотрудник добавлен.', adminMenu());
-			return;
-		}
-	}
-
-	// ======================================
-	// COMMANDS
-	// ======================================
-
-	if (low === '/start') {
-		await send(id, '✅ Панель активирована.', menu(id));
-	}
-
-	else if (low === '🪪 статистика') {
-
-		const row = await query(`SELECT * FROM users WHERE id=?`, [id]);
-
-		await send(id,
-`🔻RP-Nickname: ${row.rp_nick || 'Не указано'}
+        await send(id,
+`🔻RP Nickname: ${row.rp_nick || 'Не указано'}
 🔻Должность: ${row.post || 'Не указано'}
-🪙Coins: ${row.coins}
+🪙 Coins: ${row.coins}
 
-📋 Личная информация
+⛔ Предупреждения: ${row.warns}
+⛔ Выговоры: ${row.vigs}
 
-▫️Имя: ${row.name || 'Не указано'}
-▫️Возраст: ${row.age || 'Не указано'}
-▫️Дата рождения: ${row.birthday || 'Не указано'}
-▫️Часовой пояс: ${row.timezone || 'Не указано'}
-▫️ПК: ${row.pc || 'Не указано'}
+✅ Норма: ${row.norm_days}
+❎ Неактивы: ${row.inactive_count}`, menu(id));
+    }
 
-🪪 Статистика модератора
+    else if (low === '🗂 заявления') {
+        await send(id, '🗂 Раздел заявлений:', claimsMenu());
+    }
 
-⛔Предупреждения: ${row.warns}
-⛔Выговоры: ${row.vigs}
+    else if (low === '📑 отчёт') {
+        states[id] = { type: 'report' };
+        await send(id, '📑 Отправьте отчёт с фото.');
+    }
 
-▫️Поставлен: ${row.appointed || 'Не указано'}
-▫️Последнее повышение: ${row.last_up || 'Не указано'}
+    else if (low === '⚖ инструктаж') {
+        await send(id, '⚖ Соблюдайте правила.', menu(id));
+    }
 
-✅Дней нормы: ${row.norm_days}
-❎Неактивов: ${row.inactive_count}
+    else if (low === '🆘 sos') {
+        await sendAdmins(`🆘 SOS вызов от id${id}`);
+        await send(id, '✅ Руководство уведомлено.', menu(id));
+    }
 
-⚠Discord: ${row.discord || 'Не указано'}
-⚠Forum: ${row.forum || 'Не указано'}
-⚠Telegram: ${row.telegram || 'Не указано'}`, menu(id));
-	}
+    // =====================================
+    // ADMIN
+    // =====================================
+    else if (low === '🛠 управление' && ADMINS.includes(id)) {
+        await send(id, '🛠 Панель управления:', adminMenu());
+    }
 
-	else if (low === '🗂 заявления') {
-		await send(id, '🗂 Раздел заявлений:', claimsMenu());
-	}
+    else if (low === '👤 модераторы' && ADMINS.includes(id)) {
+        await send(id, '👤 Управление модераторами:', moderatorsMenu());
+    }
 
-	else if (low === '📑 отчёт') {
-		states[id] = { type: 'report' };
-		await send(id, `📑 Заполните форму: 
-		
-1. Ваша должность: 
-2. Сколько часов было в discord: 
-3. Сколько действий (1 наказание = 1 действие, если нет: -): 
-4. Скриншот времени в discord: 
-5. Скриншоты всех выданных наказаний за день, отвеченных репортов (можно из логов, можно из выданных наказаний): 
-6. Дата за которую подается отчет:`);
-	}
+    else if (low === '➕ добавить модератора' && ADMINS.includes(id)) {
+        states[id] = { type: 'add_link' };
+        await send(id, 'Введите ссылку / ID / @username');
+    }
 
-	else if (low === '🛩 неактив') {
-		states[id] = { type: 'inactive' };
-		await send(id, `🛩 Заполните форму:
-				   
-1. Дата неактива: 
-2. Причина неактива:`);
-	}
+    else if (low === '🗑 удалить модератора' && ADMINS.includes(id)) {
+        states[id] = { type: 'delete_mod' };
+        await send(id, 'Введите ссылку / ID');
+    }
 
-	else if (low === '🔖 повышение') {
-		states[id] = { type: 'up' };
-		await send(id,
-				   `🔖 Заполните форму:
-1. Ваша нынешня должность:
-2. Количество дней на посту:
-3. Как Вы считаете, почему Вы готовы к повышению и что Вы для этого сделали:`);
-	}
+    else if (low === '🔎 найти модератора' && ADMINS.includes(id)) {
+        states[id] = { type: 'find_mod' };
+        await send(id, 'Введите ссылку / ID');
+    }
 
-	else if (low === '🗂 снятие выговора') {
-		states[id] = { type: 'vigoff' };
-		await send(id, `🗂 Заполните форму:
-1. Дата получения выговора: 
-2. Причина выговора: 
-3. Выполнено условие для снятия:  `);
-	}
+    else if (low === '📄 состав' && ADMINS.includes(id)) {
 
-	else if (low === '🔕 пропуск собрания') {
-		states[id] = { type: 'skip' };
-		await send(id, '🔕 Укажите причину.');
-	}
+        const rows = await all(`SELECT * FROM users WHERE rp_nick != ''`);
 
-	else if (low === '⚖ инструктаж') {
-		await send(id, '⚖ Инструктаж:\n• Соблюдать правила\n• Быть активным', menu(id));
-	}
+        let msg = '📄 Состав:\n\n';
 
-	else if (low === '🆘 sos') {
-		await sendAdmins(`🆘 SOS вызов от id${id}`);
-		await send(id, '✅ Руководство уведомлено.', menu(id));
-	}
+        rows.forEach((u, i) => {
+            msg += `${i + 1}. ${u.rp_nick} — ${u.post}\n`;
+        });
 
-	else if (low === '🛠 управление' && ADMINS.includes(id)) {
-    await send(id, '🛠 Панель управления:', adminMenu());
-}
+        await send(id, msg, adminMenu());
+    }
 
-else if (low === '👤 модераторы' && ADMINS.includes(id)) {
-    await send(id, '👤 Раздел модераторов:', moderatorsMenu());
-}
-
-else if (low === '📊 статистика' && ADMINS.includes(id)) {
-    await send(id, '📊 Раздел статистики.', adminMenu());
-}
-
-else if (low === '🔖 повышения' && ADMINS.includes(id)) {
-    await send(id, '🔖 Раздел повышений.', adminMenu());
-}
-
-else if (low === '📄 состав' && ADMINS.includes(id)) {
-    await send(id, '📄 Список состава.', adminMenu());
-}
-
-else if (low === '⚙ настройки' && ADMINS.includes(id)) {
-    await send(id, '⚙ Раздел настроек.', adminMenu());
-}
-
-else if (low === '➕ добавить модератора' && ADMINS.includes(id)) {
-    states[id] = { type: 'add_staff_link' };
-    await send(id, 'Введите VK ссылку / ID / @username');
-}
+    else if (low === '⬅ назад') {
+        await send(id, '⬅ Главное меню.', menu(id));
+    }
 
 });
 
-// ======================================
+// =====================================
 vk.updates.start()
 .then(() => console.log('BOT STARTED'))
 .catch(console.error);
