@@ -206,17 +206,49 @@ function claimsMenu() {
         .inline(false);
 }
 
+// ===============================
+// V6 — ЗАМЕНИ ТОЛЬКО adminMenu()
+// ===============================
+
 function adminMenu() {
     return Keyboard.builder()
-        .textButton({ label: '👤 Модераторы', color: Keyboard.PRIMARY_COLOR })
+
+        .textButton({
+            label: '👤 Модераторы',
+            color: Keyboard.PRIMARY_COLOR
+        })
+
         .row()
-        .textButton({ label: '📊 Статистика', color: Keyboard.POSITIVE_COLOR })
-        .textButton({ label: '🔖 Повышения', color: Keyboard.SECONDARY_COLOR })
+
+        .textButton({
+            label: '📊 Статистика',
+            color: Keyboard.POSITIVE_COLOR
+        })
+
+        .textButton({
+            label: '🔖 Повышения',
+            color: Keyboard.SECONDARY_COLOR
+        })
+
         .row()
-        .textButton({ label: '📄 Состав', color: Keyboard.PRIMARY_COLOR })
-        .textButton({ label: '⚙ Настройки', color: Keyboard.NEGATIVE_COLOR })
+
+        .textButton({
+            label: '📄 Состав',
+            color: Keyboard.PRIMARY_COLOR
+        })
+
+        .textButton({
+            label: '⚙ Настройки',
+            color: Keyboard.NEGATIVE_COLOR
+        })
+
         .row()
-        .textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR })
+
+        .textButton({
+            label: '⬅ Назад',
+            color: Keyboard.SECONDARY_COLOR
+        })
+
         .inline(false);
 }
 
