@@ -1,5 +1,6 @@
-// FULL V4 bot.js
-// npm install vk-io sqlite3
+// V5 FULL — ЧАСТЬ 1/2
+// bot.js
+// npm i vk-io sqlite3
 
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
@@ -27,7 +28,7 @@ const vk = new VK({
 });
 
 // =====================================
-// DB
+// DATABASE
 // =====================================
 const db = new sqlite3.Database('./base.db');
 
@@ -37,12 +38,25 @@ id INTEGER PRIMARY KEY,
 rp_nick TEXT DEFAULT '',
 post TEXT DEFAULT '',
 coins INTEGER DEFAULT 0,
+
+name TEXT DEFAULT '',
+age TEXT DEFAULT '',
+birthday TEXT DEFAULT '',
+timezone TEXT DEFAULT '',
+pc TEXT DEFAULT '',
+
 warns INTEGER DEFAULT 0,
 vigs INTEGER DEFAULT 0,
+
+appointed TEXT DEFAULT '',
+last_up TEXT DEFAULT '',
+
 norm_days INTEGER DEFAULT 0,
 inactive_count INTEGER DEFAULT 0,
-appointed TEXT DEFAULT '',
-last_up TEXT DEFAULT ''
+
+discord TEXT DEFAULT '',
+forum TEXT DEFAULT '',
+telegram TEXT DEFAULT ''
 )
 `);
 
@@ -60,13 +74,13 @@ function reg(id) {
 
 function get(sql, params = []) {
     return new Promise(resolve => {
-        db.get(sql, params, (e, row) => resolve(row));
+        db.get(sql, params, (err, row) => resolve(row));
     });
 }
 
 function all(sql, params = []) {
     return new Promise(resolve => {
-        db.all(sql, params, (e, rows) => resolve(rows));
+        db.all(sql, params, (err, rows) => resolve(rows));
     });
 }
 
@@ -98,6 +112,7 @@ async function sendAdmins(msg, attachment = []) {
 async function resolveUser(text) {
     text = text
         .replace('https://vk.com/', '')
+        .replace('http://vk.com/', '')
         .replace('vk.com/', '')
         .replace('@', '')
         .trim();
@@ -105,14 +120,36 @@ async function resolveUser(text) {
     if (/^\d+$/.test(text)) return Number(text);
 
     try {
-        const user = await vk.api.users.get({
+        const users = await vk.api.users.get({
             user_ids: text
         });
 
-        return user[0].id;
+        return users[0].id;
     } catch {
         return null;
     }
+}
+
+// =====================================
+// DATE HELPERS
+// =====================================
+function parseDate(str) {
+    if (!str || !str.includes('.')) return null;
+
+    const parts = str.split('.');
+    if (parts.length !== 3) return null;
+
+    return new Date(parts[2], parts[1] - 1, parts[0]);
+}
+
+function daysBetween(str) {
+    const d = parseDate(str);
+    if (!d) return 'Не указано';
+
+    const now = new Date();
+    const diff = now - d;
+
+    return Math.floor(diff / 86400000);
 }
 
 // =====================================
@@ -183,20 +220,25 @@ function adminMenu() {
         .inline(false);
 }
 
-function moderatorsMenu() {
-    return Keyboard.builder()
-        .textButton({ label: '➕ Добавить модератора', color: Keyboard.POSITIVE_COLOR })
-        .row()
-        .textButton({ label: '🔎 Найти модератора', color: Keyboard.PRIMARY_COLOR })
-        .row()
-        .textButton({ label: '🗑 Удалить модератора', color: Keyboard.NEGATIVE_COLOR })
-        .row()
-        .textButton({ label: '⬅ Назад', color: Keyboard.SECONDARY_COLOR })
-        .inline(false);
+// =====================================
+// REPORT PHOTO PARSER
+// =====================================
+function getPhotos(context) {
+    const arr = [];
+
+    if (!context.attachments) return arr;
+
+    for (const a of context.attachments) {
+        if (a.type === 'photo') {
+            arr.push(a.toString());
+        }
+    }
+
+    return arr;
 }
 
 // =====================================
-// START
+// MAIN HANDLER
 // =====================================
 vk.updates.on('message_new', async (context) => {
 
@@ -218,13 +260,7 @@ vk.updates.on('message_new', async (context) => {
         // REPORT
         if (st.type === 'report') {
 
-            const photos = [];
-
-            for (const a of context.attachments) {
-                if (a.type === 'photo') {
-                    photos.push(a.toString());
-                }
-            }
+            const photos = getPhotos(context);
 
             await sendAdmins(
                 `📑 Новый отчёт\n\n👤 id${id}\n📝 ${text || 'Без текста'}`,
@@ -232,13 +268,18 @@ vk.updates.on('message_new', async (context) => {
             );
 
             delete states[id];
+
             await send(id, '✅ Отчёт отправлен.', menu(id));
             return;
         }
 
-        // ADD MODERATOR
-        if (st.type === 'add_link') {
+        // V5 FULL — ЧАСТЬ 2/2
+// вставить СРАЗУ после части 1
 
+        // ============================
+        // ADD MODERATOR
+        // ============================
+        if (st.type === 'add_link') {
             const uid = await resolveUser(text);
 
             if (!uid) {
@@ -253,19 +294,18 @@ vk.updates.on('message_new', async (context) => {
                 uid
             };
 
-            await send(id, 'Введите RP Nick:');
+            await send(id, 'Введите RP Nickname:');
             return;
         }
 
         if (st.type === 'add_nick') {
-
             states[id] = {
                 type: 'add_post',
                 uid: st.uid,
                 nick: text
             };
 
-            let msg = 'Выберите должность:\n\n';
+            let msg = 'Введите номер должности:\n\n';
 
             POSTS.forEach((p, i) => {
                 msg += `${i + 1}. ${p}\n`;
@@ -276,58 +316,65 @@ vk.updates.on('message_new', async (context) => {
         }
 
         if (st.type === 'add_post') {
-
             const num = Number(text);
 
             if (!POSTS[num - 1]) {
-                await send(id, '❌ Введите номер должности');
+                await send(id, '❌ Неверный номер.');
                 return;
             }
 
-            await run(
-                `UPDATE users SET rp_nick=?, post=? WHERE id=?`,
-                [st.nick, POSTS[num - 1], st.uid]
-            );
+            const today = new Date();
+            const d = `${String(today.getDate()).padStart(2,'0')}.${String(today.getMonth()+1).padStart(2,'0')}.${today.getFullYear()}`;
+
+            await run(`
+                UPDATE users SET
+                rp_nick=?,
+                post=?,
+                appointed=?,
+                last_up=?
+                WHERE id=?
+            `, [
+                st.nick,
+                POSTS[num - 1],
+                d,
+                d,
+                st.uid
+            ]);
 
             delete states[id];
 
-            await send(id, '✅ Модератор добавлен.', moderatorsMenu());
+            await send(id, '✅ Модератор добавлен.', adminMenu());
             return;
         }
 
-        // DELETE
-        if (st.type === 'delete_mod') {
-
-            const uid = await resolveUser(text);
-
-            await run(`DELETE FROM users WHERE id=?`, [uid]);
-
+        // ============================
+        // REPORT SIMPLE STATES
+        // ============================
+        if (st.type === 'inactive') {
+            await sendAdmins(`🛩 Неактив\n\n👤 id${id}\n📝 ${text}`);
             delete states[id];
-
-            await send(id, '🗑 Модератор удалён.', moderatorsMenu());
+            await send(id, '✅ Заявка отправлена.', menu(id));
             return;
         }
 
-        // FIND
-        if (st.type === 'find_mod') {
-
-            const uid = await resolveUser(text);
-            const row = await get(`SELECT * FROM users WHERE id=?`, [uid]);
-
-            if (!row) {
-                await send(id, '❌ Не найден.');
-                return;
-            }
-
-            await send(id,
-`👤 ${row.rp_nick}
-🆔 ${uid}
-📌 ${row.post}
-🪙 Coins: ${row.coins}
-⚠ Warns: ${row.warns}
-⛔ Vigs: ${row.vigs}`, moderatorsMenu());
-
+        if (st.type === 'up') {
+            await sendAdmins(`🔖 Повышение\n\n👤 id${id}\n📝 ${text}`);
             delete states[id];
+            await send(id, '✅ Заявка отправлена.', menu(id));
+            return;
+        }
+
+        if (st.type === 'vigoff') {
+            await sendAdmins(`🗂 Снятие выговора\n\n👤 id${id}\n📝 ${text}`);
+            delete states[id];
+            await send(id, '✅ Заявка отправлена.', menu(id));
+            return;
+        }
+
+        if (st.type === 'skip') {
+            await sendAdmins(`🔕 Пропуск собрания\n\n👤 id${id}\n📝 ${text}`);
+            delete states[id];
+            await send(id, '✅ Заявка отправлена.', menu(id));
             return;
         }
     }
@@ -340,33 +387,92 @@ vk.updates.on('message_new', async (context) => {
         await send(id, '✅ Панель активирована.', menu(id));
     }
 
+    // ============================
+    // STATISTIC
+    // ============================
     else if (low === '🪪 статистика') {
 
         const row = await get(`SELECT * FROM users WHERE id=?`, [id]);
 
+        if (!row) {
+            await send(id, 'Профиль не найден.', menu(id));
+            return;
+        }
+
         await send(id,
-`🔻RP Nickname: ${row.rp_nick || 'Не указано'}
+`🔻RP-Nickname: ${row.rp_nick || 'Не указано'}
 🔻Должность: ${row.post || 'Не указано'}
-🪙 Coins: ${row.coins}
+🪙Coins: ${row.coins}
 
-⛔ Предупреждения: ${row.warns}
-⛔ Выговоры: ${row.vigs}
+📋 Личная информация
 
-✅ Норма: ${row.norm_days}
-❎ Неактивы: ${row.inactive_count}`, menu(id));
+▫️Имя: ${row.name || 'Не указано'}
+▫️Возраст: ${row.age || 'Не указано'}
+▫️Дата рождения: ${row.birthday || 'Не указано'}
+▫️Часовой пояс: ${row.timezone || 'Не указано'}
+▫️ПК: ${row.pc || 'Не указано'}
+
+🪪 Статистика модератора
+
+⛔️Предупреждения: ${row.warns}
+⛔️Выговоры: ${row.vigs}
+
+▫️Поставлен: ${row.appointed || 'Не указано'}
+▫️Последнее повышение: ${row.last_up || 'Не указано'}
+▫️Дней на посту: ${daysBetween(row.appointed)}
+▫️Дней на должности: ${daysBetween(row.last_up)}
+
+✅Дней выполненной нормы: ${row.norm_days}
+❎Количество неактивов: ${row.inactive_count}
+
+⚠️Discord: ${row.discord || 'Не указано'}
+⚠️Forum: ${row.forum || 'Не указано'}
+⚠️Telegram: ${row.telegram || 'Не указано'}`, menu(id));
     }
 
+    // ============================
+    // CLAIMS
+    // ============================
     else if (low === '🗂 заявления') {
         await send(id, '🗂 Раздел заявлений:', claimsMenu());
     }
 
     else if (low === '📑 отчёт') {
         states[id] = { type: 'report' };
-        await send(id, '📑 Отправьте отчёт с фото.');
+        await send(id, '📑 Отправьте текст отчёта и прикрепите фото.');
     }
 
+    else if (low === '🛩 неактив') {
+        states[id] = { type: 'inactive' };
+        await send(id, '🛩 Укажите причину и срок.');
+    }
+
+    else if (low === '🔖 повышение') {
+        states[id] = { type: 'up' };
+        await send(id, '🔖 Укажите причину.');
+    }
+
+    else if (low === '🗂 снятие выговора') {
+        states[id] = { type: 'vigoff' };
+        await send(id, '🗂 Укажите причину.');
+    }
+
+    else if (low === '🔕 пропуск собрания') {
+        states[id] = { type: 'skip' };
+        await send(id, '🔕 Укажите причину.');
+    }
+
+    // ============================
+    // OTHER
+    // ============================
     else if (low === '⚖ инструктаж') {
-        await send(id, '⚖ Соблюдайте правила.', menu(id));
+        await send(id,
+`⚖ Инструктаж:
+
+• Соблюдать правила
+• Быть активным
+• Работать честно
+• Уважать состав`, menu(id));
     }
 
     else if (low === '🆘 sos') {
@@ -374,15 +480,16 @@ vk.updates.on('message_new', async (context) => {
         await send(id, '✅ Руководство уведомлено.', menu(id));
     }
 
-    // =====================================
-    // ADMIN
-    // =====================================
+    // ============================
+    // ADMIN PANEL
+    // ============================
     else if (low === '🛠 управление' && ADMINS.includes(id)) {
         await send(id, '🛠 Панель управления:', adminMenu());
     }
 
     else if (low === '👤 модераторы' && ADMINS.includes(id)) {
-        await send(id, '👤 Управление модераторами:', moderatorsMenu());
+        states[id] = { type: 'none' };
+        await send(id, 'Введите команду:\n➕ Добавить модератора');
     }
 
     else if (low === '➕ добавить модератора' && ADMINS.includes(id)) {
@@ -390,19 +497,14 @@ vk.updates.on('message_new', async (context) => {
         await send(id, 'Введите ссылку / ID / @username');
     }
 
-    else if (low === '🗑 удалить модератора' && ADMINS.includes(id)) {
-        states[id] = { type: 'delete_mod' };
-        await send(id, 'Введите ссылку / ID');
-    }
-
-    else if (low === '🔎 найти модератора' && ADMINS.includes(id)) {
-        states[id] = { type: 'find_mod' };
-        await send(id, 'Введите ссылку / ID');
-    }
-
     else if (low === '📄 состав' && ADMINS.includes(id)) {
 
         const rows = await all(`SELECT * FROM users WHERE rp_nick != ''`);
+
+        if (!rows.length) {
+            await send(id, 'Состав пуст.', adminMenu());
+            return;
+        }
 
         let msg = '📄 Состав:\n\n';
 
@@ -419,6 +521,8 @@ vk.updates.on('message_new', async (context) => {
 
 });
 
+// =====================================
+// START BOT
 // =====================================
 vk.updates.start()
 .then(() => console.log('BOT STARTED'))
