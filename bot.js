@@ -11,7 +11,7 @@ const vk = new VK({
     pollingGroupId: GROUP_ID
 });
 
-const MAIN_ADMINS = [123456789]; // ← Твой ID
+const MAIN_ADMINS = [547053039]; // ← Твой ID
 
 // ====================== DATABASE ======================
 const db = new sqlite3.Database('moderation.db');
