@@ -2,12 +2,11 @@
   "name": "vk-moderation-bot",
   "version": "1.0.0",
   "main": "bot.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "vk-io": "^6.0.0",
+    "vk-io": "^4.10.1",
     "sqlite3": "^5.1.7",
     "dotenv": "^16.4.5"
   }
