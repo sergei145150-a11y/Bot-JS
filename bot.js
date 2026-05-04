@@ -248,5 +248,5 @@ async function startBot() {
     await vk.updates.startPolling();
     console.log('🚀 Бот запущен успешно!');
 }
-
+});
 startBot();
