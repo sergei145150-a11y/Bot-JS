@@ -32,7 +32,7 @@ db.serialize(() => {
         norms_completed INTEGER DEFAULT 0
     )`);
 
-    // Автоматическое добавление Главного модератора
+    // Добавление Главного модератора
     MAIN_ADMIN_IDS.forEach(id => {
         db.run(`INSERT OR IGNORE INTO moderators 
             (user_id, nickname, role, rank, name, coins, norms_completed) 
@@ -54,9 +54,7 @@ const clearState = (id) => states.delete(id);
 // ====================== ДАННЫЕ ======================
 async function getUserData(userId) {
     return new Promise(r => {
-        db.get("SELECT * FROM moderators WHERE user_id = ?", [userId], (_, row) => {
-            r(row || null);
-        });
+        db.get("SELECT * FROM moderators WHERE user_id = ?", [userId], (_, row) => r(row));
     });
 }
 
@@ -82,4 +80,64 @@ function formatStats(user) {
 
 ⚠️ Discord: ${user.discord || '—'}
 ⚠️ Forum: ${user.forum || '—'}
-⚠️ Telegram: ${user.telegram || '—'
+⚠️ Telegram: ${user.telegram || '—'}`;
+}
+
+// ====================== КЛАВИАТУРЫ ======================
+const mainKeyboard = Keyboard.builder()
+    .textButton({ label: '🪪 Статистика', payload: { cmd: 'my_stats' } })
+    .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
+    .row()
+    .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
+    .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
+
+const adminPanelKeyboard = Keyboard.builder()
+    .textButton({ label: '👤 Добавить', payload: { cmd: 'add_mod_start' } })
+    .textButton({ label: '📋 Список', payload: { cmd: 'mod_list' } })
+    .row()
+    .textButton({ label: '✏️ Редактировать', payload: { cmd: 'edit_start' } });
+
+// ====================== HANDLER ======================
+vk.updates.on('message', async (ctx) => {
+    if (ctx.isOutbox) return;
+
+    const uid = ctx.peerId;
+    const text = ctx.text.trim();
+    const state = getState(uid);
+    const userData = await getUserData(uid);
+
+    if (!userData) return ctx.send('⛔ Доступ запрещён.');
+
+    if (['/start', 'меню'].includes(text.toLowerCase())) {
+        let kb = mainKeyboard;
+        if (['Главный модератор', 'Заместитель'].includes(userData.role)) {
+            kb = mainKeyboard.clone().row().textButton({ label: '🛠️ Управление', payload: { cmd: 'admin_panel' } });
+        }
+        return ctx.send(`👋 Добро пожаловать, ${userData.role}!`, { keyboard: kb });
+    }
+
+    if (text === '🪪 Статистика') {
+        return ctx.send(formatStats(userData));
+    }
+
+    if (text === '🛠️ Управление') {
+        return ctx.send('🛠️ Панель управления:', { keyboard: adminPanelKeyboard });
+    }
+
+    // Редактирование (оставлено как было в предыдущей версии)
+    if (text === '✏️ Редактировать' || state?.state === 'edit_select_user') {
+        if (!state) {
+            setState(uid, 'edit_select_user');
+            return ctx.send('Введите ID модератора:');
+        }
+        // ... (редактирование можно добавить позже, если нужно)
+        return ctx.send('Раздел редактирования в работе...');
+    }
+});
+
+async function startBot() {
+    await vk.updates.startPolling();
+    console.log('🚀 Бот запущен успешно!');
+}
+
+startBot();
