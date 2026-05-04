@@ -5,6 +5,7 @@ const sqlite3 = require('sqlite3').verbose();
 const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-R2qqEn6-nXc-jnKS2GT-OTT1Ucfy4f3zjveJShDVNmdQqpnD7EP7rp9wbLtXZDmSOLTYWh0QqevdCwu7Ind2sL9RWFGbPDAoYYAUcz3Iw4a0wd5rX2V36ezAooxH5L-X8WSC6-pX_TUfC56_qWvWbY28KDw";
 const GROUP_ID = 238114499;
 const MAIN_ADMINS = [547053039];// ← Твой ID
+const MAIN_ADMINS_IDS = [547053039];
 
 const vk = new VK({ token: TOKEN, pollingGroupId: GROUP_ID });
 const db = new sqlite3.Database('moderation.db');
