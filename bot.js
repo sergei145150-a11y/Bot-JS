@@ -1,16 +1,12 @@
-// bot.js — Полноценный бот с кнопкой Управление
+// bot.js — Статистика + Управление
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
 
 const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-R2qqEn6-nXc-jnKS2GT-OTT1Ucfy4f3zjveJShDVNmdQqpnD7EP7rp9wbLtXZDmSOLTYWh0QqevdCwu7Ind2sL9RWFGbPDAoYYAUcz3Iw4a0wd5rX2V36ezAooxH5L-X8WSC6-pX_TUfC56_qWvWbY28KDw";
 const GROUP_ID = 238114499;
-const MAIN_ADMINS = [547053039]; // ← Твой ID
+const MAIN_ADMINS = [547053039];
 
-const vk = new VK({
-    token: TOKEN,
-    pollingGroupId: GROUP_ID,
-});
-
+const vk = new VK({ token: TOKEN, pollingGroupId: GROUP_ID });
 const db = new sqlite3.Database('moderation.db');
 
 db.serialize(() => {
@@ -25,84 +21,121 @@ db.serialize(() => {
         join_date TEXT DEFAULT CURRENT_TIMESTAMP,
         last_promotion TEXT,
         name TEXT,
-        age INTEGER
+        age INTEGER,
+        birth_date TEXT,
+        timezone TEXT,
+        pc TEXT DEFAULT 'Нет',
+        discord TEXT,
+        forum TEXT,
+        telegram TEXT,
+        inactive_count INTEGER DEFAULT 0,
+        norms_completed INTEGER DEFAULT 0
     )`);
 });
 
-// Получение роли пользователя
+// ====================== FSM ======================
+const states = new Map();
+
+const setState = (id, state, data = {}) => states.set(id, {state, data, time: Date.now()});
+const getState = (id) => {
+    const s = states.get(id);
+    if (!s || Date.now() - s.time > 1800000) states.delete(id);
+    return s;
+};
+
+// ====================== ПОЛУЧЕНИЕ ДАННЫХ ======================
 async function getUserData(userId) {
-    if (MAIN_ADMINS.includes(userId)) {
-        return { role: 'Главный модератор', rank: 'Высшая роль' };
-    }
-    
-    return new Promise(resolve => {
-        db.get("SELECT role, rank FROM moderators WHERE user_id = ?", [userId], (_, row) => {
-            resolve(row || null);
-        });
-    });
+    if (MAIN_ADMINS.includes(userId)) return { role: 'Главный модератор', nickname: 'Главный' };
+    return new Promise(r => db.get("SELECT * FROM moderators WHERE user_id = ?", [userId], (_, row) => r(row)));
+}
+
+// Красивая статистика
+function formatStats(user) {
+    if (!user) return '❌ Пользователь не найден';
+    return `🔻 RP-Nickname: ${user.nickname || '—'}
+🔻 Должность: ${user.role} (${user.rank})
+
+🪙 Coins: ${user.coins}
+
+📋 Личная информация
+▫️ Имя: ${user.name || '—'}
+▫️ Возраст: ${user.age || '—'}
+▫️ Дата рождения: ${user.birth_date || '—'}
+▫️ Часовой пояс: ${user.timezone || '—'}
+▫️ ПК: ${user.pc || 'Нет'}
+
+🪪 Статистика модератора
+⛔️ Предупреждения: ${user.warnings}
+⛔️ Выговоры: ${user.reprimands}
+
+▫️ Поставлен: ${user.join_date ? user.join_date.split('T')[0] : '—'}
+▫️ Последнее повышение: ${user.last_promotion || '—'}
+▫️ Дней на посту: ${user.norm_completed || 0}  (авто)
+▫️ Дней на должности: — 
+
+✅ Дней выполненной нормы: ${user.norms_completed}
+❎ Количество неактивов: ${user.inactive_count}
+
+⚠️ Discord: ${user.discord || '—'}
+⚠️ Forum: ${user.forum || '—'}
+⚠️ Telegram: ${user.telegram || '—'}`;
 }
 
 // ====================== КЛАВИАТУРЫ ======================
-function getMainKeyboard(userData) {
-    const kb = Keyboard.builder()
-        .textButton({ label: '🪪 Статистика', payload: { cmd: 'stats' } })
-        .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
-        .row()
-        .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
-        .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
+const mainKeyboard = Keyboard.builder()
+    .textButton({ label: '🪪 Статистика', payload: { cmd: 'my_stats' } })
+    .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
+    .row()
+    .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
+    .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
 
-    // Кнопка управления только для высоких ролей
-    const adminRoles = ['Главный модератор', 'Заместитель', 'Куратор модерации', 'Администратор'];
-    if (adminRoles.includes(userData?.role)) {
-        kb.row().textButton({ label: '🛠️ Управление', payload: { cmd: 'admin_panel' } });
-    }
+const adminPanelKeyboard = Keyboard.builder()
+    .textButton({ label: '👤 Добавить модератора', payload: { cmd: 'add_mod_start' } })
+    .textButton({ label: '📋 Список состава', payload: { cmd: 'mod_list' } })
+    .row()
+    .textButton({ label: '✏️ Редактировать', payload: { cmd: 'edit_mod' } });
 
-    return kb;
-}
-
-// ====================== MAIN HANDLER ======================
+// ====================== HANDLER ======================
 vk.updates.on('message', async (ctx) => {
     if (ctx.isOutbox) return;
 
     const uid = ctx.peerId;
     const text = ctx.text.trim();
-
+    const state = getState(uid);
     const userData = await getUserData(uid);
 
-    if (!userData) {
-        return ctx.send('⛔ У вас нет доступа к боту.\nОбратитесь к Главному модератору.');
-    }
+    if (!userData) return ctx.send('⛔ Доступ запрещён.');
 
-    if (['/start', 'меню', 'start'].includes(text.toLowerCase())) {
-        return ctx.send(`👋 Добро пожаловать, ${userData.role}!`, { 
-            keyboard: getMainKeyboard(userData) 
-        });
-    }
-
-    if (text === '🆘 SOS') {
-        MAIN_ADMINS.forEach(id => vk.api.messages.send({ user_id: id, message: `🚨 SOS от @id${uid}` }));
-        return ctx.send('🚨 SOS отправлен администрации!');
-    }
-
-    if (text === '🛠️ Управление') {
-        if (!['Главный модератор', 'Заместитель', 'Куратор модерации', 'Администратор'].includes(userData.role)) {
-            return ctx.send('⛔ Доступ запрещён.');
+    if (['/start', 'меню'].includes(text.toLowerCase())) {
+        let kb = mainKeyboard;
+        if (['Главный модератор', 'Заместитель'].includes(userData.role)) {
+            kb = mainKeyboard.clone().row().textButton({ label: '🛠️ Управление', payload: { cmd: 'admin_panel' } });
         }
+        return ctx.send(`👋 Добро пожаловать, ${userData.role}!`, { keyboard: kb });
+    }
 
-        const adminKb = Keyboard.builder()
-            .textButton({ label: '👤 Добавить модератора', payload: { cmd: 'add_mod' } })
-            .textButton({ label: '📋 Список модераторов', payload: { cmd: 'mod_list' } })
-            .row()
-            .textButton({ label: '📊 Общая статистика', payload: { cmd: 'all_stats' } })
-            .textButton({ label: '⚙ Настройки', payload: { cmd: 'settings' } });
+    // === СТАТИСТИКА ===
+    if (text === '🪪 Статистика' || text === 'my_stats') {
+        return ctx.send(formatStats(userData));
+    }
 
-        return ctx.send('🛠️ Панель управления:', { keyboard: adminKb });
+    // === УПРАВЛЕНИЕ ===
+    if (text === '🛠️ Управление') {
+        return ctx.send('🛠️ Панель управления:', { keyboard: adminPanelKeyboard });
+    }
+
+    if (text === '📋 Список состава') {
+        db.all("SELECT user_id, nickname, role, rank FROM moderators", [], (_, rows) => {
+            let msg = '👥 Состав:\n\n';
+            rows.forEach(r => msg += `• @id${r.user_id} — ${r.nickname} (${r.role})\n`);
+            ctx.send(msg || 'Пусто');
+        });
     }
 });
 
 async function startBot() {
     await vk.updates.startPolling();
-    console.log('🚀 Бот запущен успешно!');
+    console.log('🚀 Бот запущен | Статистика реализована');
 }
 
 startBot();
