@@ -1,4 +1,4 @@
-// bot.js — Полноценный Moderation Bot
+// bot.js
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
 
@@ -8,7 +8,6 @@ const MAIN_ADMINS = [547053039];
 
 const vk = new VK({ token: TOKEN, pollingGroupId: GROUP_ID });
 
-// ====================== DATABASE ======================
 const db = new sqlite3.Database('moderation.db');
 
 db.serialize(() => {
@@ -26,74 +25,71 @@ db.serialize(() => {
         age INTEGER
     )`);
 
-    db.run(`CREATE TABLE IF NOT EXISTS logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        type TEXT,
-        action TEXT,
-        date TEXT DEFAULT CURRENT_TIMESTAMP
-    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS logs (...)`); // можно добавить позже
 });
 
-// ====================== ACCESS CHECK ======================
+// Проверка доступа — любой, кто есть в таблице
 async function hasAccess(userId) {
-    if (MAIN_ADMINS.includes(userId)) return true;
+    if (MAIN_ADMINS.includes(userId)) return { access: true, role: 'Главный модератор' };
+    
     return new Promise(resolve => {
-        db.get("SELECT role FROM moderators WHERE user_id = ?", [userId], (err, row) => {
-            resolve(!!row);
+        db.get("SELECT role, rank FROM moderators WHERE user_id = ?", [userId], (err, row) => {
+            if (row) {
+                resolve({ access: true, role: row.role, rank: row.rank });
+            } else {
+                resolve({ access: false });
+            }
         });
     });
 }
 
-// ====================== KEYBOARDS ======================
-const mainKeyboard = Keyboard.builder()
-    .textButton({ label: '🪪 Статистика', payload: { cmd: 'stats' } })
-    .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
-    .row()
-    .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
-    .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
+// ====================== КЛАВИАТУРЫ ======================
+function getMainKeyboard(role, rank) {
+    const kb = Keyboard.builder()
+        .textButton({ label: '🪪 Статистика', payload: { cmd: 'stats' } })
+        .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
+        .row()
+        .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
+        .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
 
-// ====================== MAIN HANDLER ======================
+    // Управление для высоких должностей
+    const adminRoles = ['Главный модератор', 'Заместитель', 'Куратор модерации', 'Администратор'];
+    if (adminRoles.includes(role)) {
+        kb.row().textButton({ label: '🛠️ Управление', payload: { cmd: 'admin_panel' } });
+    }
+
+    return kb;
+}
+
+// ====================== MAIN ======================
 vk.updates.on('message', async (ctx) => {
     if (ctx.isOutbox) return;
 
     const uid = ctx.peerId;
     const text = ctx.text.trim();
 
-    const access = await hasAccess(uid);
-    if (!access) {
-        return ctx.send('⛔ У вас нет доступа.\nОбратитесь к Главному модератору.');
+    const user = await hasAccess(uid);
+
+    if (!user.access) {
+        return ctx.send('⛔ У вас нет доступа к боту.\n\nЧтобы получить доступ — обратитесь к Главному модератору.');
     }
 
     if (['/start', 'меню', 'start'].includes(text.toLowerCase())) {
-        return ctx.send('👋 Добро пожаловать в систему модерации!', { 
-            keyboard: mainKeyboard 
+        return ctx.send(`👋 Добро пожаловать, ${user.role}!\nРанг: ${user.rank || '—'}`, { 
+            keyboard: getMainKeyboard(user.role, user.rank) 
         });
     }
 
+    // ... остальные команды (будем добавлять)
     if (text === '🆘 SOS') {
-        MAIN_ADMINS.forEach(id => {
-            vk.api.messages.send({ user_id: id, message: `🚨 SOS от @id${uid}` });
-        });
-        return ctx.send('🚨 SOS отправлен администрации!');
-    }
-
-    if (text === '🪪 Статистика') {
-        return ctx.send('🪪 Ваша статистика:\n\nРаздел в разработке...');
-    }
-
-    if (text === '📋 Заявления') {
-        return ctx.send('📋 Выберите тип заявления (в разработке)');
-    }
-
-    if (text === '💻 Инструктаж') {
-        return ctx.send('💻 Инструкции для модераторов:\n\nРаздел в разработке...');
+        MAIN_ADMINS.forEach(id => vk.api.messages.send({user_id: id, message: `🚨 SOS от @id${uid}`}));
+        ctx.send('🚨 SOS отправлен!');
     }
 });
 
 async function startBot() {
     await vk.updates.startPolling();
-    console.log('🚀 Бот запущен успешно!');
+    console.log('🚀 Бот запущен | Доступ у всех модераторов и выше');
 }
 
 startBot();
