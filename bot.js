@@ -243,10 +243,11 @@ if (state?.state === 'edit_coins_remove') {
 
     return ctx.send(`✅ Снято ${amount} coins`);
 }
+});
 
 async function startBot() {
     await vk.updates.startPolling();
     console.log('🚀 Бот запущен успешно!');
 }
-});
+
 startBot();
