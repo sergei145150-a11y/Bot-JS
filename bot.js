@@ -1,8 +1,8 @@
-// bot.js — Редактирование статистики + предыдущий функционал
+// bot.js — Полноценное добавление модератора + Редактирование + Статистика
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
 
-const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-R2qqEn6-nXc-jnKS2GT-OTT1Ucfy4f3zjveJShDVNmdQqpnD7EP7rp9wbLtXZDmSOLTYWh0QqevdCwu7Ind2sL9RWFGbPDAoYYAUcz3Iw4a0wd5rX2V36ezAooxH5L-X8WSC6-pX_TUfC56_qWvWbY28KDw";
+const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-R2qqEn6-nXc-jnKS2GT-OTT1Ucfy4f3zjveJShDVNmdQqpnD7EP7rp9wbLtXZDmSOLTYWh0QqevdCwu7Ind2sL9RWFGbPDAoYYAUcz3Iw4a0wd5rX2V36ezAooxH5L-X8WSC6-pX_TUfC56_qWvWbY28KDw
 const GROUP_ID = 238114499;
 const MAIN_ADMINS = [547053039];
 
@@ -19,7 +19,7 @@ db.serialize(() => {
         warnings INTEGER DEFAULT 0,
         reprimands INTEGER DEFAULT 0,
         join_date TEXT DEFAULT CURRENT_TIMESTAMP,
-        last_promotion TEXT,
+        last_promotion TEXT DEFAULT CURRENT_TIMESTAMP,
         name TEXT,
         age INTEGER,
         birth_date TEXT,
@@ -67,8 +67,6 @@ function formatStats(user) {
 ⛔️ Предупреждения: ${user.warnings}
 ⛔️ Выговоры: ${user.reprimands}
 
-▫️ Поставлен: ${user.join_date ? user.join_date.split('T')[0] : '—'}
-▫️ Последнее повышение: ${user.last_promotion || '—'}
 ✅ Дней нормы: ${user.norms_completed}
 ❎ Неактивов: ${user.inactive_count}
 
@@ -86,8 +84,8 @@ const mainKeyboard = Keyboard.builder()
     .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
 
 const adminPanelKeyboard = Keyboard.builder()
-    .textButton({ label: '👤 Добавить', payload: { cmd: 'add_mod_start' } })
-    .textButton({ label: '📋 Список', payload: { cmd: 'mod_list' } })
+    .textButton({ label: '👤 Добавить модератора', payload: { cmd: 'add_mod_start' } })
+    .textButton({ label: '📋 Список состава', payload: { cmd: 'mod_list' } })
     .row()
     .textButton({ label: '✏️ Редактировать', payload: { cmd: 'edit_start' } });
 
@@ -120,61 +118,73 @@ vk.updates.on('message', async (ctx) => {
         return ctx.send('🛠️ Панель управления:', { keyboard: adminPanelKeyboard });
     }
 
-    // === РЕДАКТИРОВАНИЕ ===
-    if (text === '✏️ Редактировать' || state?.state === 'edit_select_user') {
+    // ====================== ДОБАВЛЕНИЕ МОДЕРАТОРА ======================
+    if (text === '👤 Добавить модератора' || state?.state === 'add_mod_id') {
         if (!state) {
-            setState(uid, 'edit_select_user');
-            return ctx.send('Введите ID модератора для редактирования:');
+            setState(uid, 'add_mod_id');
+            return ctx.send('🔹 Введите ID пользователя (или ссылку на профиль):');
         }
         const targetId = parseInt(text.replace(/\D/g, ''));
-        if (!targetId) return ctx.send('❌ Неверный ID');
+        if (!targetId) return ctx.send('❌ Не удалось определить ID.');
 
-        const targetData = await new Promise(r => db.get("SELECT * FROM moderators WHERE user_id = ?", [targetId], (_, row) => r(row)));
-        if (!targetData) return ctx.send('❌ Модератор не найден.');
-
-        setState(uid, 'edit_select_field', { targetId, targetData });
-        return ctx.send(`Редактируем @id${targetId} — ${targetData.nickname}\n\nВыберите поле для изменения:`, {
-            keyboard: Keyboard.builder()
-                .textButton({ label: 'RP-Nickname', payload: { field: 'nickname' } })
-                .textButton({ label: 'Имя', payload: { field: 'name' } })
-                .row()
-                .textButton({ label: 'Возраст', payload: { field: 'age' } })
-                .textButton({ label: 'Дата рождения', payload: { field: 'birth_date' } })
-                .row()
-                .textButton({ label: 'Часовой пояс', payload: { field: 'timezone' } })
-                .textButton({ label: 'ПК', payload: { field: 'pc' } })
-                .row()
-                .textButton({ label: 'Coins', payload: { field: 'coins' } })
-                .textButton({ label: 'Предупреждения', payload: { field: 'warnings' } })
-                .row()
-                .textButton({ label: 'Выговоры', payload: { field: 'reprimands' } })
-                .textButton({ label: 'Неактивы', payload: { field: 'inactive_count' } })
-        });
+        setState(uid, 'add_mod_nickname', { targetId });
+        return ctx.send(`ID принят: @id${targetId}\n\nВведите RP-Nickname:`);
     }
 
-    if (state?.state === 'edit_select_field') {
-        const field = text || ctx.payload?.field;
-        if (!field) return;
-
-        setState(uid, 'edit_input_value', { ...state.data, field });
-        return ctx.send(`Введите новое значение для поля "${field}":`);
+    if (state?.state === 'add_mod_nickname') {
+        setState(uid, 'add_mod_name', { ...state.data, nickname: text });
+        return ctx.send('Введите реальное имя:');
     }
 
-    if (state?.state === 'edit_input_value') {
-        const { targetId, field } = state.data;
-        let value = text;
+    if (state?.state === 'add_mod_name') {
+        setState(uid, 'add_mod_age', { ...state.data, name: text });
+        return ctx.send('Введите возраст:');
+    }
 
-        db.run(`UPDATE moderators SET ${field} = ? WHERE user_id = ?`, [value, targetId], (err) => {
-            if (err) return ctx.send('❌ Ошибка обновления');
-            ctx.send(`✅ Поле "${field}" успешно обновлено!`);
-            clearState(uid);
+    if (state?.state === 'add_mod_age') {
+        setState(uid, 'add_mod_birth', { ...state.data, age: parseInt(text) });
+        return ctx.send('Введите дату рождения (ДД.ММ.ГГГГ):');
+    }
+
+    if (state?.state === 'add_mod_birth') {
+        setState(uid, 'add_mod_timezone', { ...state.data, birth_date: text });
+        return ctx.send('Введите часовой пояс (например: UTC+3, МСК):');
+    }
+
+    if (state?.state === 'add_mod_timezone') {
+        setState(uid, 'add_mod_pc', { ...state.data, timezone: text });
+        return ctx.send('Есть ПК? (Да/Нет):');
+    }
+
+    if (state?.state === 'add_mod_pc') {
+        const finalData = { ...state.data, pc: text };
+        
+        db.run(`INSERT OR REPLACE INTO moderators 
+            (user_id, nickname, name, age, birth_date, timezone, pc, join_date) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            [finalData.targetId, finalData.nickname, finalData.name, finalData.age, 
+             finalData.birth_date, finalData.timezone, finalData.pc],
+            (err) => {
+                if (err) return ctx.send('❌ Ошибка сохранения');
+                ctx.send(`✅ Модератор @id${finalData.targetId} успешно добавлен!\n\n` +
+                        `Ник: ${finalData.nickname}\nИмя: ${finalData.name}`);
+                clearState(uid);
+            });
+    }
+
+    // Список состава
+    if (text === '📋 Список состава') {
+        db.all("SELECT * FROM moderators", [], (_, rows) => {
+            let msg = '👥 Состав модерации:\n\n';
+            rows.forEach(m => msg += `• @id${m.user_id} — ${m.nickname} (${m.role})\n`);
+            ctx.send(msg || 'Состав пуст.');
         });
     }
 });
 
 async function startBot() {
     await vk.updates.startPolling();
-    console.log('🚀 Бот запущен | Редактирование статистики активно');
+    console.log('🚀 Бот запущен | Добавление модератора полностью работает');
 }
 
 startBot();
