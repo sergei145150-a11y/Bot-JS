@@ -126,15 +126,123 @@ vk.updates.on('message', async (ctx) => {
     }
 
     // Редактирование (оставлено как было в предыдущей версии)
-    if (text === '✏️ Редактировать' || state?.state === 'edit_select_user') {
-        if (!state) {
-            setState(uid, 'edit_select_user');
-            return ctx.send('Введите ID модератора:');
-        }
-        // ... (редактирование можно добавить позже, если нужно)
-        return ctx.send('Раздел редактирования в работе...');
+    // ====================== EDIT START ======================
+if (text === '✏️ Редактировать') {
+    setState(uid, 'edit_user');
+    return ctx.send('Введите ID пользователя:');
+}
+
+// выбор пользователя
+if (state?.state === 'edit_user') {
+
+    const targetId = parseInt(text);
+
+    if (isNaN(targetId)) {
+        return ctx.send('❌ Введите корректный ID');
     }
-});
+
+    const target = await getUserData(targetId);
+
+    if (!target) {
+        return ctx.send('❌ Пользователь не найден');
+    }
+
+    setState(uid, 'edit_action', { targetId });
+
+    return ctx.send(
+        `Выбран: ${target.nickname || target.user_id}`,
+        {
+            keyboard: Keyboard.builder()
+                .textButton({ label: '➕ Coins' })
+                .textButton({ label: '➖ Coins' })
+                .row()
+                .textButton({ label: '⛔ Выговор' })
+                .textButton({ label: '❌ Снять выговор' })
+                .row()
+                .textButton({ label: '📈 +Норма' })
+                .textButton({ label: '📉 -Норма' })
+                .row()
+                .textButton({ label: '❌ Отмена' })
+        }
+    );
+}
+
+// выбор действия
+if (state?.state === 'edit_action') {
+
+    const targetId = state.data.targetId;
+
+    if (text === '➕ Coins') {
+        setState(uid, 'edit_coins_add', { targetId });
+        return ctx.send('Введите количество:');
+    }
+
+    if (text === '➖ Coins') {
+        setState(uid, 'edit_coins_remove', { targetId });
+        return ctx.send('Введите количество:');
+    }
+
+    if (text === '⛔ Выговор') {
+        db.run(`UPDATE moderators SET reprimands = reprimands + 1 WHERE user_id = ?`, [targetId]);
+        clearState(uid);
+        return ctx.send('✅ Выговор выдан');
+    }
+
+    if (text === '❌ Снять выговор') {
+        db.run(`UPDATE moderators SET reprimands = reprimands - 1 WHERE user_id = ?`, [targetId]);
+        clearState(uid);
+        return ctx.send('✅ Выговор снят');
+    }
+
+    if (text === '📈 +Норма') {
+        db.run(`UPDATE moderators SET norms_completed = norms_completed + 1 WHERE user_id = ?`, [targetId]);
+        clearState(uid);
+        return ctx.send('✅ День нормы добавлен');
+    }
+
+    if (text === '📉 -Норма') {
+        db.run(`UPDATE moderators SET norms_completed = norms_completed - 1 WHERE user_id = ?`, [targetId]);
+        clearState(uid);
+        return ctx.send('✅ День нормы убран');
+    }
+
+    if (text === '❌ Отмена') {
+        clearState(uid);
+        return ctx.send('❌ Отменено');
+    }
+}
+
+// добавить coins
+if (state?.state === 'edit_coins_add') {
+
+    const amount = parseInt(text);
+
+    if (isNaN(amount) || amount <= 0) {
+        return ctx.send('❌ Введите число больше 0');
+    }
+
+    db.run(`UPDATE moderators SET coins = coins + ? WHERE user_id = ?`, [amount, state.data.targetId]);
+
+    clearState(uid);
+
+    return ctx.send(`✅ Добавлено ${amount} coins`);
+}
+
+// снять coins
+if (state?.state === 'edit_coins_remove') {
+
+    const amount = parseInt(text);
+
+    if (isNaN(amount) || amount <= 0) {
+        return ctx.send('❌ Введите число больше 0');
+    }
+
+    db.run(`UPDATE moderators SET coins = coins - ? WHERE user_id = ?`, [amount, state.data.targetId]);
+
+    clearState(uid);
+
+    return ctx.send(`✅ Снято ${amount} coins`);
+}
 
 async function startBot() {
     await vk.updates.startPolling();
