@@ -1,4 +1,4 @@
-// bot.js
+// bot.js — Стабильная версия с обработкой AbortError
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
 
@@ -6,7 +6,11 @@ const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-
 const GROUP_ID = 238114499;
 const MAIN_ADMINS = [547053039];
 
-const vk = new VK({ token: TOKEN, pollingGroupId: GROUP_ID });
+const vk = new VK({
+    token: TOKEN,
+    pollingGroupId: GROUP_ID,
+    apiMode: 'parallel',           // Улучшает стабильность
+});
 
 const db = new sqlite3.Database('moderation.db');
 
@@ -24,44 +28,28 @@ db.serialize(() => {
         name TEXT,
         age INTEGER
     )`);
-
-    db.run(`CREATE TABLE IF NOT EXISTS logs (...)`); // можно добавить позже
 });
 
-// Проверка доступа — любой, кто есть в таблице
+// Проверка доступа
 async function hasAccess(userId) {
     if (MAIN_ADMINS.includes(userId)) return { access: true, role: 'Главный модератор' };
     
     return new Promise(resolve => {
-        db.get("SELECT role, rank FROM moderators WHERE user_id = ?", [userId], (err, row) => {
-            if (row) {
-                resolve({ access: true, role: row.role, rank: row.rank });
-            } else {
-                resolve({ access: false });
-            }
+        db.get("SELECT role FROM moderators WHERE user_id = ?", [userId], (_, row) => {
+            resolve(row ? { access: true, role: row.role } : { access: false });
         });
     });
 }
 
-// ====================== КЛАВИАТУРЫ ======================
-function getMainKeyboard(role, rank) {
-    const kb = Keyboard.builder()
-        .textButton({ label: '🪪 Статистика', payload: { cmd: 'stats' } })
-        .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
-        .row()
-        .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
-        .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
+// Главная клавиатура
+const mainKeyboard = Keyboard.builder()
+    .textButton({ label: '🪪 Статистика', payload: { cmd: 'stats' } })
+    .textButton({ label: '📋 Заявления', payload: { cmd: 'applications' } })
+    .row()
+    .textButton({ label: '💻 Инструктаж', payload: { cmd: 'instructions' } })
+    .textButton({ label: '🆘 SOS', payload: { cmd: 'sos' } });
 
-    // Управление для высоких должностей
-    const adminRoles = ['Главный модератор', 'Заместитель', 'Куратор модерации', 'Администратор'];
-    if (adminRoles.includes(role)) {
-        kb.row().textButton({ label: '🛠️ Управление', payload: { cmd: 'admin_panel' } });
-    }
-
-    return kb;
-}
-
-// ====================== MAIN ======================
+// ====================== HANDLER ======================
 vk.updates.on('message', async (ctx) => {
     if (ctx.isOutbox) return;
 
@@ -69,27 +57,44 @@ vk.updates.on('message', async (ctx) => {
     const text = ctx.text.trim();
 
     const user = await hasAccess(uid);
-
     if (!user.access) {
-        return ctx.send('⛔ У вас нет доступа к боту.\n\nЧтобы получить доступ — обратитесь к Главному модератору.');
+        return ctx.send('⛔ У вас нет доступа к боту.');
     }
 
-    if (['/start', 'меню', 'start'].includes(text.toLowerCase())) {
-        return ctx.send(`👋 Добро пожаловать, ${user.role}!\nРанг: ${user.rank || '—'}`, { 
-            keyboard: getMainKeyboard(user.role, user.rank) 
-        });
+    if (['/start', 'меню'].includes(text.toLowerCase())) {
+        return ctx.send(`👋 Добро пожаловать!\nРоль: ${user.role}`, { keyboard: mainKeyboard });
     }
 
-    // ... остальные команды (будем добавлять)
     if (text === '🆘 SOS') {
-        MAIN_ADMINS.forEach(id => vk.api.messages.send({user_id: id, message: `🚨 SOS от @id${uid}`}));
+        MAIN_ADMINS.forEach(id => vk.api.messages.send({ user_id: id, message: `🚨 SOS от @id${uid}` }));
         ctx.send('🚨 SOS отправлен!');
     }
 });
 
-async function startBot() {
-    await vk.updates.startPolling();
-    console.log('🚀 Бот запущен | Доступ у всех модераторов и выше');
+// ====================== ЗАПУСК С ПЕРЕЗАПУСКОМ ======================
+async function startPolling() {
+    try {
+        console.log('🔄 Запуск Long Polling...');
+        await vk.updates.startPolling();
+        console.log('✅ Polling успешно запущен!');
+    } catch (error) {
+        if (error.type === 'aborted' || error.message.includes('aborted')) {
+            console.log('⚠️ AbortError — перезапуск polling через 5 секунд...');
+            setTimeout(startPolling, 5000);
+        } else {
+            console.error('❌ Критическая ошибка:', error);
+        }
+    }
 }
 
-startBot();
+// Автоматический перезапуск при обрыве
+vk.updates.on('error', (error) => {
+    console.error('Polling error:', error);
+    if (error.message?.includes('aborted') || error.type === 'aborted') {
+        setTimeout(startPolling, 3000);
+    }
+});
+
+startPolling();
+
+console.log('🚀 Бот инициализирован');
