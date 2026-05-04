@@ -1,8 +1,8 @@
-// bot.js — Полноценное добавление модератора + Редактирование + Статистика
+// bot.js — Улучшенное добавление + Редактирование + Статистика для Главного
 const { VK, Keyboard } = require('vk-io');
 const sqlite3 = require('sqlite3').verbose();
 
-const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-R2qqEn6-nXc-jnKS2GT-OTT1Ucfy4f3zjveJShDVNmdQqpnD7EP7rp9wbLtXZDmSOLTYWh0QqevdCwu7Ind2sL9RWFGbPDAoYYAUcz3Iw4a0wd5rX2V36ezAooxH5L-X8WSC6-pX_TUfC56_qWvWbY28KDw"
+const TOKEN = "vk1.a.c_NX16Hlc78trOj76fNP5UITEA52LxsXPJcBQ-HIbhg71EfbqbRpSGmcaY-R2qqEn6-nXc-jnKS2GT-OTT1Ucfy4f3zjveJShDVNmdQqpnD7EP7rp9wbLtXZDmSOLTYWh0QqevdCwu7Ind2sL9RWFGbPDAoYYAUcz3Iw4a0wd5rX2V36ezAooxH5L-X8WSC6-pX_TUfC56_qWvWbY28KDw";
 const GROUP_ID = 238114499;
 const MAIN_ADMINS = [547053039];
 
@@ -46,15 +46,28 @@ const clearState = (id) => states.delete(id);
 
 // ====================== ДАННЫЕ ======================
 async function getUserData(userId) {
-    if (MAIN_ADMINS.includes(userId)) return { role: 'Главный модератор', nickname: 'Главный' };
+    if (MAIN_ADMINS.includes(userId)) {
+        return {
+            user_id: userId,
+            nickname: "Главный Модератор",
+            role: "Главный модератор",
+            rank: "Высший ранг",
+            coins: 999,
+            warnings: 0,
+            reprimands: 0,
+            join_date: "2024-01-01",
+            last_promotion: "2025-01-01",
+            norms_completed: 999
+        };
+    }
     return new Promise(r => db.get("SELECT * FROM moderators WHERE user_id = ?", [userId], (_, row) => r(row)));
 }
 
 function formatStats(user) {
     return `🔻 RP-Nickname: ${user.nickname || '—'}
-🔻 Должность: ${user.role} (${user.rank})
+🔻 Должность: ${user.role} (${user.rank || '—'})
 
-🪙 Coins: ${user.coins}
+🪙 Coins: ${user.coins || 0}
 
 📋 Личная информация
 ▫️ Имя: ${user.name || '—'}
@@ -64,11 +77,11 @@ function formatStats(user) {
 ▫️ ПК: ${user.pc || 'Нет'}
 
 🪪 Статистика модератора
-⛔️ Предупреждения: ${user.warnings}
-⛔️ Выговоры: ${user.reprimands}
+⛔️ Предупреждения: ${user.warnings || 0}
+⛔️ Выговоры: ${user.reprimands || 0}
 
-✅ Дней нормы: ${user.norms_completed}
-❎ Неактивов: ${user.inactive_count}
+✅ Дней выполненной нормы: ${user.norms_completed || 0}
+❎ Неактивов: ${user.inactive_count || 0}
 
 ⚠️ Discord: ${user.discord || '—'}
 ⚠️ Forum: ${user.forum || '—'}
@@ -122,69 +135,103 @@ vk.updates.on('message', async (ctx) => {
     if (text === '👤 Добавить модератора' || state?.state === 'add_mod_id') {
         if (!state) {
             setState(uid, 'add_mod_id');
-            return ctx.send('🔹 Введите ID пользователя (или ссылку на профиль):');
+            return ctx.send('Введите ID пользователя:');
         }
         const targetId = parseInt(text.replace(/\D/g, ''));
-        if (!targetId) return ctx.send('❌ Не удалось определить ID.');
+        if (!targetId) return ctx.send('❌ Неверный ID');
 
         setState(uid, 'add_mod_nickname', { targetId });
-        return ctx.send(`ID принят: @id${targetId}\n\nВведите RP-Nickname:`);
+        return ctx.send('Введите RP-Nickname:');
     }
 
     if (state?.state === 'add_mod_nickname') {
-        setState(uid, 'add_mod_name', { ...state.data, nickname: text });
-        return ctx.send('Введите реальное имя:');
+        setState(uid, 'add_mod_role', { ...state.data, nickname: text });
+        return ctx.send('Выберите роль:', {
+            keyboard: Keyboard.builder()
+                .textButton({ label: 'Модератор', payload: { role: 'Модератор' } })
+                .textButton({ label: 'Администратор', payload: { role: 'Администратор' } })
+                .row()
+                .textButton({ label: 'Заместитель', payload: { role: 'Заместитель' } })
+                .textButton({ label: 'Куратор модерации', payload: { role: 'Куратор модерации' } })
+        });
     }
 
-    if (state?.state === 'add_mod_name') {
-        setState(uid, 'add_mod_age', { ...state.data, name: text });
-        return ctx.send('Введите возраст:');
+    if (state?.state === 'add_mod_role') {
+        const role = text || ctx.payload?.role;
+        setState(uid, 'add_mod_rank', { ...state.data, role });
+        return ctx.send('Выберите ранг:', {
+            keyboard: Keyboard.builder()
+                .textButton({ label: 'Младший модератор', payload: { rank: 'Младший модератор' } })
+                .textButton({ label: 'Модератор', payload: { rank: 'Модератор' } })
+                .row()
+                .textButton({ label: 'Старший модератор', payload: { rank: 'Старший модератор' } })
+                .textButton({ label: 'Куратор', payload: { rank: 'Куратор модерации' } })
+        });
     }
 
-    if (state?.state === 'add_mod_age') {
-        setState(uid, 'add_mod_birth', { ...state.data, age: parseInt(text) });
-        return ctx.send('Введите дату рождения (ДД.ММ.ГГГГ):');
-    }
+    if (state?.state === 'add_mod_rank') {
+        const rank = text || ctx.payload?.rank;
+        const data = { ...state.data, rank };
 
-    if (state?.state === 'add_mod_birth') {
-        setState(uid, 'add_mod_timezone', { ...state.data, birth_date: text });
-        return ctx.send('Введите часовой пояс (например: UTC+3, МСК):');
-    }
-
-    if (state?.state === 'add_mod_timezone') {
-        setState(uid, 'add_mod_pc', { ...state.data, timezone: text });
-        return ctx.send('Есть ПК? (Да/Нет):');
-    }
-
-    if (state?.state === 'add_mod_pc') {
-        const finalData = { ...state.data, pc: text };
-        
         db.run(`INSERT OR REPLACE INTO moderators 
-            (user_id, nickname, name, age, birth_date, timezone, pc, join_date) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-            [finalData.targetId, finalData.nickname, finalData.name, finalData.age, 
-             finalData.birth_date, finalData.timezone, finalData.pc],
+            (user_id, nickname, role, rank, join_date, last_promotion) 
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [data.targetId, data.nickname, data.role, data.rank],
             (err) => {
-                if (err) return ctx.send('❌ Ошибка сохранения');
-                ctx.send(`✅ Модератор @id${finalData.targetId} успешно добавлен!\n\n` +
-                        `Ник: ${finalData.nickname}\nИмя: ${finalData.name}`);
+                if (err) return ctx.send('❌ Ошибка');
+                ctx.send(`✅ Модератор успешно добавлен!\n@id${data.targetId} — ${data.nickname}\nРоль: ${data.role}\nРанг: ${data.rank}`);
                 clearState(uid);
             });
     }
 
-    // Список состава
-    if (text === '📋 Список состава') {
-        db.all("SELECT * FROM moderators", [], (_, rows) => {
-            let msg = '👥 Состав модерации:\n\n';
-            rows.forEach(m => msg += `• @id${m.user_id} — ${m.nickname} (${m.role})\n`);
-            ctx.send(msg || 'Состав пуст.');
+    // ====================== РЕДАКТИРОВАНИЕ ======================
+    if (text === '✏️ Редактировать' || state?.state === 'edit_select_user') {
+        if (!state) {
+            setState(uid, 'edit_select_user');
+            return ctx.send('Введите ID модератора для редактирования:');
+        }
+        const targetId = parseInt(text.replace(/\D/g, ''));
+        if (!targetId) return ctx.send('❌ Неверный ID');
+
+        const target = await new Promise(r => db.get("SELECT * FROM moderators WHERE user_id = ?", [targetId], (_, row) => r(row)));
+        if (!target) return ctx.send('❌ Модератор не найден');
+
+        setState(uid, 'edit_select_field', { targetId });
+        return ctx.send(`Редактируем @id${targetId} — ${target.nickname}\n\nВыберите поле:`, {
+            keyboard: Keyboard.builder()
+                .textButton({ label: 'RP-Nickname', payload: { field: 'nickname' } })
+                .textButton({ label: 'Роль', payload: { field: 'role' } })
+                .textButton({ label: 'Ранг', payload: { field: 'rank' } })
+                .row()
+                .textButton({ label: 'Имя', payload: { field: 'name' } })
+                .textButton({ label: 'Возраст', payload: { field: 'age' } })
+                .textButton({ label: 'Coins', payload: { field: 'coins' } })
+                .row()
+                .textButton({ label: 'Предупреждения', payload: { field: 'warnings' } })
+                .textButton({ label: 'Выговоры', payload: { field: 'reprimands' } })
+                .textButton({ label: 'Неактивы', payload: { field: 'inactive_count' } })
+        });
+    }
+
+    if (state?.state === 'edit_select_field') {
+        const field = text || ctx.payload?.field;
+        setState(uid, 'edit_input_value', { ...state.data, field });
+        return ctx.send(`Введите новое значение для "${field}":`);
+    }
+
+    if (state?.state === 'edit_input_value') {
+        const { targetId, field } = state.data;
+        db.run(`UPDATE moderators SET ${field} = ? WHERE user_id = ?`, [text, targetId], (err) => {
+            if (err) return ctx.send('❌ Ошибка');
+            ctx.send(`✅ Поле "${field}" обновлено!`);
+            clearState(uid);
         });
     }
 });
 
 async function startBot() {
     await vk.updates.startPolling();
-    console.log('🚀 Бот запущен | Добавление модератора полностью работает');
+    console.log('🚀 Бот запущен | Добавление + Редактирование улучшены');
 }
 
 startBot();
